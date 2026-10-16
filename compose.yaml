@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PHUC_DATA_DIR: /app/data
+      PHUC_UPLOAD_DIR: /app/uploads
+      COOKIE_SECURE: "1"
+      BEHIND_PROXY: "1"
+    volumes:
+      - foodie_data:/app/data
+      - foodie_uploads:/app/uploads
+  web:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Hãy cấu hình DOMAIN trong file .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+volumes:
+  foodie_data:
+  foodie_uploads:
+  caddy_data:
+  caddy_config:

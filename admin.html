@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quản trị · PHUC-FOODIE</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/admin.css">
+</head>
+
+<body>
+  <header><a href="/admin" class="brand">PHUC-FOODIE <small>Quản trị</small></a>
+    <nav><button type="button" id="header-preview-btn" class="nav-btn">Xem cửa hàng</button><span
+        id="admin-name"></span><button id="logout" hidden>Đăng xuất</button></nav>
+  </header>
+  <main>
+    <p id="notice" role="status" hidden></p>
+    <section id="login-panel" class="login-panel">
+      <p class="eyebrow">DÀNH CHO CỬA HÀNG</p>
+      <h1>Đăng nhập quản trị</h1>
+      <p>Quản lý món và tiếp nhận đơn hàng của khách.</p>
+      <form id="admin-login"><label>Email hoặc số điện thoại<input id="identifier" autocomplete="username"
+            required></label><label>Mật khẩu<input id="password" type="password" autocomplete="current-password"
+            required></label><button class="primary" type="submit">Đăng nhập</button></form>
+      <p class="hint">Tài khoản quản trị được tạo bằng lệnh <code>python server.py --create-admin</code> trên máy chạy
+        server.</p>
+    </section>
+    <section id="dashboard" hidden>
+      <div class="heading">
+        <div>
+          <p class="eyebrow">CỬA HÀNG CỦA BẠN</p>
+          <h1>Hôm nay có gì?</h1>
+          <p>Tiếp nhận và xử lý đơn hàng tại đây.</p>
+        </div><button id="refresh">↻ Cập nhật</button>
+      </div>
+      <div class="stats">
+        <article><span>Chờ xác nhận</span><strong id="pending-count">0</strong></article>
+        <article><span>Đang thực hiện</span><strong id="active-count">0</strong></article>
+        <article><span>Đơn đã giao</span><strong id="delivered-count">0</strong></article>
+        <article><span>Tiền COD đã thu</span><strong id="revenue">0đ</strong></article>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Khu vực quản trị"><button id="orders-tab" role="tab"
+          aria-selected="true" class="active" aria-controls="orders-panel">Đơn hàng</button><button id="products-tab"
+          role="tab" aria-selected="false" aria-controls="products-panel">Quản lý món</button><button id="preview-tab"
+          role="tab" aria-selected="false" aria-controls="preview-panel">Xem cửa hàng</button><button id="settings-tab"
+          role="tab" aria-selected="false" aria-controls="settings-panel">Cấu hình cửa hàng</button></div>
+      <section id="orders-panel" role="tabpanel" aria-labelledby="orders-tab">
+        <div class="toolbar">
+          <h2>Đơn hàng</h2><label>Lọc trạng thái<select id="status-filter">
+              <option value="all">Tất cả</option>
+              <option value="pending">Chờ xác nhận</option>
+              <option value="confirmed">Đã xác nhận</option>
+              <option value="preparing">Đang chuẩn bị</option>
+              <option value="delivering">Đang giao</option>
+              <option value="delivered">Đã giao</option>
+              <option value="cancelled">Đã hủy</option>
+            </select></label>
+        </div>
+        <p class="hint">Tự cập nhật mỗi 20 giây · Hiển thị tối đa 1.000 đơn gần nhất; thống kê tính trên danh sách này.
+        </p>
+        <div id="order-list"></div>
+      </section>
+      <section id="products-panel" role="tabpanel" aria-labelledby="products-tab" hidden>
+        <div class="toolbar">
+          <h2>Quản lý món</h2><button class="primary" id="add-product">Thêm món</button>
+        </div>
+        <div id="product-grid" class="product-grid"></div>
+      </section>
+      <section id="preview-panel" role="tabpanel" aria-labelledby="preview-tab" hidden>
+        <div class="preview-header-box">
+          <div class="preview-title-row">
+            <div>
+              <span class="preview-badge-mode">CHẾ ĐỘ XEM TRƯỚC DÀNH CHO ADMIN</span>
+              <h2>Xem cửa hàng</h2>
+              <p class="hint">Kiểm tra hiển thị thực đơn, giá bán, ảnh món và trạng thái kho trực tiếp bên trong admin.
+                Không tạo đơn hoặc can thiệp giỏ hàng khách tại đây.</p>
+            </div>
+            <button class="primary" id="preview-add-product">+ Thêm món mới</button>
+          </div>
+          <div id="preview-store-info"></div>
+          <div class="preview-toolbar">
+            <div class="preview-search-wrap">
+              <input type="text" id="preview-search" placeholder="🔍 Tìm kiếm món ăn trong cửa hàng..."
+                autocomplete="off">
+            </div>
+            <div class="preview-categories" id="preview-categories">
+              <button type="button" class="btn-preview-cat active" data-category="Tất cả">Tất cả</button>
+              <button type="button" class="btn-preview-cat" data-category="Đồ ăn">Đồ ăn</button>
+              <button type="button" class="btn-preview-cat" data-category="Nước uống">Nước uống</button>
+              <button type="button" class="btn-preview-cat" data-category="Combo">Combo</button>
+            </div>
+          </div>
+        </div>
+        <div id="preview-grid" class="preview-grid"></div>
+      </section>
+      <section id="settings-panel" role="tabpanel" aria-labelledby="settings-tab" hidden>
+        <div class="settings-wrap">
+          <div class="toolbar">
+            <div>
+              <h2>Cấu hình cửa hàng & Giao hàng</h2>
+              <p class="hint">Thiết lập thông tin thương hiệu, trạng thái nhận đơn, lịch hoạt động và quy tắc giao hàng.
+              </p>
+            </div>
+          </div>
+          <form id="settings-form">
+            <div class="settings-card">
+              <h3>1. Thông tin cửa hàng</h3>
+              <p class="hint">Hiển thị ở đầu trang khách, thông tin liên hệ và biên nhận đơn hàng.</p>
+              <div class="two-col">
+                <label>Tên cửa hàng <span class="required" style="color:#e53e3e">*</span>
+                  <input type="text" id="settings-store-name" maxlength="150" required placeholder="Ví dụ: PHUC-FOODIE">
+                </label>
+                <label>Số điện thoại hotline
+                  <input type="tel" id="settings-store-phone" maxlength="20" placeholder="Ví dụ: 0901234567">
+                </label>
+              </div>
+              <label>Địa chỉ cửa hàng
+                <input type="text" id="settings-store-address" maxlength="255"
+                  placeholder="Ví dụ: 123 Đường 3/2, Quận 10, TP.HCM">
+              </label>
+            </div>
+
+            <div class="settings-card">
+              <h3>2. Trạng thái nhận đơn</h3>
+              <p class="hint">Chủ động tạm ngưng nhận đơn khi quán quá tải hoặc cần nghỉ đột xuất (ưu tiên cao nhất).
+              </p>
+              <label class="checkbox" style="font-weight:700;font-size:15px;margin:12px 0;">
+                <input type="checkbox" id="settings-is-paused"> Tạm ngừng nhận đơn
+              </label>
+              <label id="settings-pause-reason-wrap">Thông báo lý do tạm ngừng cho khách
+                <input type="text" id="settings-pause-reason" maxlength="255"
+                  placeholder="Ví dụ: Quán đang quá tải đơn, xin quý khách quay lại sau ít phút.">
+              </label>
+            </div>
+
+            <div class="settings-card">
+              <h3>3. Lịch hoạt động theo tuần (Múi giờ Asia/Ho_Chi_Minh)</h3>
+              <p class="hint">Cửa hàng sẽ tự động đóng/mở nhận đơn theo giờ. Hỗ trợ ca đêm qua nửa đêm (ví dụ: 18:00 đến
+                02:00 sáng hôm sau).</p>
+              <div id="settings-schedule-container" class="schedule-days-container"></div>
+            </div>
+
+            <div class="settings-card">
+              <h3>4. Thời gian giao hàng & Phí vận chuyển</h3>
+              <div class="two-col">
+                <label>Thời gian giao ước tính tối thiểu (phút)
+                  <input type="number" id="settings-delivery-min" min="0" max="300" placeholder="Ví dụ: 20">
+                </label>
+                <label>Thời gian giao ước tính tối đa (phút)
+                  <input type="number" id="settings-delivery-max" min="0" max="300" placeholder="Ví dụ: 35">
+                </label>
+              </div>
+              <p class="hint">Để trống nếu chưa muốn hiển thị thời gian giao ước tính.</p>
+
+              <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;">
+                <label class="checkbox" style="font-weight:700;">
+                  <input type="checkbox" id="settings-free-ship-enabled" checked> Bật miễn phí giao hàng theo giá trị
+                  đơn
+                </label>
+                <label>Ngưỡng miễn phí giao hàng (đ)
+                  <input type="number" id="settings-free-ship-threshold" min="1000" step="1000" required value="100000">
+                </label>
+                <p class="hint">📌 Ngưỡng miễn phí giao hàng được tính trên tổng tiền món (trước khi áp dụng mã giảm giá
+                  voucher).</p>
+              </div>
+            </div>
+
+            <div class="settings-actions" style="margin-top:20px;">
+              <button type="submit" class="primary" id="btn-save-settings">💾 Lưu cấu hình cửa hàng</button>
+            </div>
+          </form>
+
+          <div class="settings-card" style="margin-top:28px;">
+            <div class="toolbar" style="margin-bottom:16px;">
+              <div>
+                <h3>5. Khu vực giao hàng</h3>
+                <p class="hint">Quản lý phạm vi phục vụ và phí giao hàng riêng biệt. Nếu chưa cấu hình khu vực, quán sẽ
+                  áp dụng phí mặc định 15.000đ.</p>
+              </div>
+              <button type="button" class="primary" id="btn-add-zone">+ Thêm khu vực</button>
+            </div>
+
+            <div id="zone-empty-reminder" class="notice-info"
+              style="display:none;padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:16px;">
+              ⚠️ Chưa có khu vực nào được cấu hình. Hệ thống đang áp dụng phí giao mặc định <strong>15.000đ</strong> và
+              miễn phí từ <strong>100.000đ</strong>. Quý khách vui lòng tạo các khu vực quán có thể giao đến.
+            </div>
+
+            <div id="zone-list-container" class="zone-list-wrap"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <dialog id="zone-dialog">
+    <form id="zone-form">
+      <div class="toolbar">
+        <h2 id="zone-title">Thêm khu vực giao hàng</h2><button type="button" id="close-zone"
+          aria-label="Đóng">×</button>
+      </div><input type="hidden" id="zone-id"><label>Tên khu vực <span class="required"
+          style="color:#e53e3e">*</span><input type="text" id="zone-name" maxlength="100" required
+          placeholder="Ví dụ: Quận 1, Quận Bình Thạnh, hoặc Bán kính 3km"></label><label>Phí giao hàng (đ) <span
+          class="required" style="color:#e53e3e">*</span><input type="number" id="zone-fee" min="0" max="10000000"
+          step="1000" required placeholder="Ví dụ: 15000 (0 nếu giao miễn phí)"></label><label class="checkbox"
+        style="margin:16px 0;"><input type="checkbox" id="zone-active" checked> Đang nhận giao hàng đến khu vực
+        này</label>
+      <p id="zone-error" class="error-msg" role="alert" style="color:#b42318;display:none;"></p>
+      <div style="display:flex;gap:12px;margin-top:16px;"><button type="submit" class="primary" id="btn-save-zone"
+          style="flex:1;">Lưu khu vực</button><button type="button" id="btn-cancel-zone" class="outline">Hủy</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="product-dialog">
+    <form id="product-form">
+      <div class="toolbar">
+        <h2 id="product-title">Thêm món</h2><button type="button" id="close-product" aria-label="Đóng">×</button>
+      </div><input id="product-id" type="hidden"><input id="product-current-image" type="hidden"><label>Tên món<input
+          id="product-name" maxlength="100" required></label>
+      <div class="two-col"><label>Giá (đ)<input id="product-price" type="number" min="1000" max="10000000" step="1"
+            required></label><label>Danh mục<select id="product-category">
+            <option>Đồ ăn</option>
+            <option>Nước uống</option>
+            <option>Combo</option>
+          </select></label></div>
+      <div class="two-col"><label>Số lượng tồn kho<input id="product-stock" type="number" min="0" step="1"
+            placeholder="Ví dụ: 20"></label><label class="checkbox" style="align-self:center;margin-top:1.2rem;"><input
+            id="product-available" type="checkbox" checked> Đang mở bán</label></div><label>Tải ảnh từ máy tính (JPEG,
+        PNG, WebP — tối đa 5 MB)<input type="file" id="product-file"
+          accept="image/jpeg,image/png,image/webp"></label><label>Hoặc chọn ảnh mẫu có sẵn<select id="product-image">
+          <option value="">-- Dùng ảnh tải lên hoặc giữ ảnh cũ --</option>
+          <option value="images/burger.jpg">Burger</option>
+          <option value="images/pizza.jpg">Pizza</option>
+          <option value="images/chicken.jpg">Gà rán</option>
+          <option value="images/noodle.jpg">Mì cay</option>
+          <option value="images/milk-tea.jpg">Trà sữa</option>
+          <option value="images/coca.jpg">Coca</option>
+          <option value="images/coffee.jpg">Cà phê</option>
+          <option value="images/combo.jpg">Combo</option>
+        </select></label>
+      <div class="image-preview-wrap" style="margin:0.5rem 0 1rem;display:flex;align-items:center;gap:0.75rem;"><img
+          id="product-preview" src="" alt="Xem trước ảnh"
+          style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:none;"><span
+          id="product-current-img-name" class="hint">Chưa có ảnh</span></div><label>Mô tả<textarea
+          id="product-description" maxlength="1000" rows="3"></textarea></label>
+      <p id="product-status" class="hint" role="status"></p>
+      <p id="product-error" role="alert"></p><button type="submit" class="primary" id="btn-save-product">Lưu
+        món</button>
+    </form>
+  </dialog>
+
+  <dialog id="preview-detail-dialog" class="preview-modal">
+    <div class="preview-detail-wrap">
+      <div class="preview-detail-top">
+        <span class="preview-badge-mode">XEM TRƯỚC CHI TIẾT MÓN</span>
+        <button type="button" id="close-preview-detail" class="preview-close-btn" aria-label="Đóng">×</button>
+      </div>
+      <div class="preview-detail-content">
+        <div class="preview-detail-media">
+          <img id="preview-detail-img" src="" alt="Ảnh món ăn">
+          <span id="preview-detail-badge" class="product-badge"></span>
+        </div>
+        <div class="preview-detail-info">
+          <h3 id="preview-detail-name"></h3>
+          <p id="preview-detail-price" class="preview-detail-price"></p>
+          <div id="preview-detail-stock" class="preview-detail-stock"></div>
+          <p id="preview-detail-desc" class="preview-detail-desc"></p>
+          <div class="preview-detail-actions">
+            <button type="button" id="preview-detail-edit-btn" class="primary">Chỉnh sửa món này</button>
+            <button type="button" id="preview-detail-back-btn" class="outline">Đóng xem trước</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/admin.js"></script>
+</body>
+
+</html>

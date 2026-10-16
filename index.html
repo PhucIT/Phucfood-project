@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHUC-FOODIE - Đặt đồ ăn & nước uống</title>
+    <!-- Liên kết file CSS để định dạng giao diện -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="app.css">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+    <!-- 1. HEADER CHUYÊN NGHIỆP CÓ LOGO, MENU VÀ NÚT GIỎ HÀNG -->
+    <header id="header">
+        <div class="header-container container">
+            <!-- Logo thương hiệu -->
+            <a href="#home" class="header-logo" onclick="scrollToSection('home')">PHUC-FOODIE</a>
+            
+            <!-- Menu điều hướng -->
+            <nav class="header-nav">
+                <a href="#home" class="nav-link" onclick="scrollToSection('home')">Trang chủ</a>
+                <a href="#menu-section" class="nav-link" onclick="scrollToSection('menu-section')">Món ăn</a>
+                <a href="#menu-section" class="nav-link" onclick="filterAndScrollCategory('Nước uống')">Nước uống</a>
+                <a href="#order-history-section" class="nav-link" onclick="scrollToSection('order-history-section')">Đơn hàng</a>
+                <a href="#auth-section" class="nav-link" id="nav-auth-link" onclick="handleHeaderUserClick()">Tài khoản</a>
+            </nav>
+
+            <!-- Khu vực nút hành động Header (Tài khoản & Giỏ hàng) -->
+            <div class="header-actions">
+                <!-- Nút tài khoản người dùng trên Header (STEP 11) -->
+                <button type="button" class="header-user-btn" id="header-user-btn" onclick="handleHeaderUserClick()" title="Tài khoản">
+                    <span id="user-display-text">👤 Đăng nhập</span>
+                </button>
+
+                <!-- Biểu tượng giỏ hàng trên Header -->
+                <a href="#cart-section" class="header-cart-btn" id="header-cart-btn" onclick="scrollToSection('cart-section')">
+                    🛒 Giỏ hàng (<span id="cart-count">0</span>)
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. HERO / BANNER GIỚI THIỆU TRANG WEB -->
+    <section class="hero-banner" id="home">
+        <div class="hero-content container">
+            <h2>Đặt món ngon – Giao tận nơi</h2>
+            <p>Thưởng thức món ăn và nước uống yêu thích một cách nhanh chóng.</p>
+            <button type="button" class="btn-hero" onclick="scrollToSection('menu-section')">
+                Đặt món ngay
+            </button>
+        </div>
+    </section>
+
+    <main class="container">
+        <p id="connection-error" class="connection-error" role="alert" hidden></p>
+        
+        <!-- THÔNG TIN CỬA HÀNG & TRẠNG THÁI HOẠT ĐỘNG (STEP STORE SETTINGS) -->
+        <div id="store-status-banner" class="store-status-banner" style="display:none;"></div>
+
+        <!-- 3. SECTION MENU DANH SÁCH MÓN ĂN -->
+        <section class="menu-section" id="menu-section">
+            <h2 class="section-title">Món ngon dành cho bạn</h2>
+            <p class="section-subtitle">Thưởng thức các món ăn và đồ uống yêu thích mỗi ngày.</p>
+            
+            <!-- Khu vực Tìm kiếm và Lọc danh mục -->
+            <div class="filter-wrapper">
+                <!-- Thanh tìm kiếm -->
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Tìm kiếm món ăn..." autocomplete="off">
+                </div>
+
+                <!-- 4 nút lọc danh mục -->
+                <div class="category-buttons" id="category-buttons">
+                    <button class="btn-category active" data-category="Tất cả" type="button">Tất cả</button>
+                    <button class="btn-category" data-category="Đồ ăn" type="button">Đồ ăn</button>
+                    <button class="btn-category" data-category="Nước uống" type="button">Nước uống</button>
+                    <button class="btn-category" data-category="Combo" type="button">Combo</button>
+                </div>
+            </div>
+
+            <!-- Khu vực container để JavaScript render các thẻ sản phẩm vào đây -->
+            <div id="product-list" class="product-grid"></div>
+        </section>
+
+        <!-- 4. SECTION GIỎ HÀNG CỦA BẠN -->
+        <section class="cart-section" id="cart-section">
+            <h2 class="section-title">Giỏ hàng của bạn</h2>
+            <p class="section-subtitle">Kiểm tra các món đã chọn trước khi đặt hàng</p>
+
+            <div class="cart-box">
+                <!-- Danh sách các sản phẩm trong giỏ (render bởi JS) -->
+                <div id="cart-items" class="cart-items-list"></div>
+
+                <!-- Khu vực nhập mã giảm giá (JS sẽ render nội dung vào đây) -->
+                <div id="voucher-section" style="display: none;"></div>
+
+                <!-- Bảng tổng tiền chi tiết: Tiền món / Giảm giá / Tổng thanh toán -->
+                <div id="cart-price-details" class="cart-price-details" style="display: none;"></div>
+
+                <!-- Khu vực tổng kết và nút Đặt hàng -->
+                <div class="cart-summary" id="cart-summary">
+                    <div class="cart-total-wrap">
+                        <span>Tổng thanh toán:</span>
+                        <strong class="cart-total-price" id="cart-total-price">0đ</strong>
+                    </div>
+                    <button type="button" class="btn-checkout" id="btn-checkout" onclick="checkout()">
+                        Đặt hàng
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. SECTION FORM THÔNG TIN GIAO HÀNG -->
+        <section class="checkout-section" id="checkout-section" style="display: none;">
+            <h2 class="section-title">Thông tin giao hàng</h2>
+            <p class="section-subtitle">Vui lòng điền thông tin để chúng tôi giao món đến bạn nhanh nhất</p>
+
+            <form class="checkout-form" id="checkout-form" onsubmit="event.preventDefault(); confirmOrder();">
+                <!-- Cảnh báo khi cửa hàng đóng cửa hoặc tạm ngừng nhận đơn -->
+                <div id="checkout-store-closed-msg" class="store-closed-alert" style="display:none;"></div>
+
+                <!-- 1. Họ và tên -->
+                <div class="form-group">
+                    <label for="customer-name">Họ và tên <span class="required">*</span></label>
+                    <input type="text" id="customer-name" placeholder="Nhập họ và tên" autocomplete="name">
+                </div>
+
+                <!-- 2. Số điện thoại -->
+                <div class="form-group">
+                    <label for="customer-phone">Số điện thoại <span class="required">*</span></label>
+                    <input type="tel" id="customer-phone" placeholder="Nhập số điện thoại" autocomplete="tel">
+                </div>
+
+                <!-- 3. Khu vực giao hàng (STEP STORE SETTINGS) -->
+                <div class="form-group" id="form-group-zone">
+                    <label for="customer-zone">Khu vực giao hàng <span class="required">*</span></label>
+                    <select id="customer-zone" onchange="handleZoneChange()">
+                        <option value="">-- Đang tải khu vực phục vụ... --</option>
+                    </select>
+                    <p class="field-hint" id="zone-hint">Chọn khu vực phục vụ để áp dụng đúng mức phí giao.</p>
+                </div>
+
+                <!-- 4. Địa chỉ giao hàng chi tiết -->
+                <div class="form-group">
+                    <label for="customer-address">Địa chỉ chi tiết (số nhà, tên đường...) <span class="required">*</span></label>
+                    <input type="text" id="customer-address" placeholder="Nhập địa chỉ nhận hàng chi tiết" autocomplete="street-address">
+                </div>
+
+                <!-- 4. Ghi chú -->
+                <div class="form-group">
+                    <label for="customer-note">Ghi chú</label>
+                    <textarea id="customer-note" rows="3" placeholder="Ví dụ: Giao vào buổi chiều..."></textarea>
+                </div>
+
+                <!-- Bảng tóm tắt đơn hàng trước khi xác nhận -->
+                <div id="checkout-price-details" class="checkout-price-details"></div>
+
+                <!-- 5. PHƯƠNG THỨC THANH TOÁN (STEP 12) -->
+                <div class="payment-section" id="payment-section">
+                    <h4 class="payment-section-title">💳 Phương thức thanh toán</h4>
+
+                    <!-- 3 Payment Cards -->
+                    <div class="payment-cards" id="payment-cards">
+                        <!-- COD -->
+                        <label class="payment-card" id="payment-card-cod">
+                            <input type="radio" name="payment-method" value="cod" class="payment-radio" onchange="selectPaymentMethod('cod')">
+                            <div class="payment-card-inner">
+                                <span class="payment-card-icon">💵</span>
+                                <span class="payment-card-label">Tiền mặt khi nhận hàng</span>
+                                <span class="payment-card-check">✓</span>
+                            </div>
+                        </label>
+
+                        <!-- Bank Transfer -->
+                        <label class="payment-card" id="payment-card-bank_transfer">
+                            <input type="radio" name="payment-method" value="bank_transfer" class="payment-radio" onchange="selectPaymentMethod('bank_transfer')">
+                            <div class="payment-card-inner">
+                                <span class="payment-card-icon">🏦</span>
+                                <span class="payment-card-label">Chuyển khoản (DEMO)</span>
+                                <span class="payment-card-check">✓</span>
+                            </div>
+                        </label>
+
+                        <!-- QR Demo -->
+                        <label class="payment-card" id="payment-card-qr_demo">
+                            <input type="radio" name="payment-method" value="qr_demo" class="payment-radio" onchange="selectPaymentMethod('qr_demo')">
+                            <div class="payment-card-inner">
+                                <span class="payment-card-icon">📱</span>
+                                <span class="payment-card-label">QR Demo</span>
+                                <span class="payment-card-check">✓</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Khu vực hiển thị thông tin chi tiết phương thức -->
+                    <div class="payment-details" id="payment-details"></div>
+
+                    <!-- Thông báo lỗi chưa chọn payment -->
+                    <div class="payment-error-msg" id="payment-error-msg" style="display: none;">
+                        Vui lòng chọn phương thức thanh toán.
+                    </div>
+                </div>
+
+                <label id="demo-payment-confirm-wrap" class="demo-payment-confirm" hidden><input type="checkbox" id="demo-payment-confirm"> Tôi hiểu đây là mô phỏng, không có giao dịch tiền thật.</label>
+                <!-- 6. Nút Xác nhận đặt hàng -->
+                <button type="submit" class="btn-confirm-order" id="btn-confirm-order">
+                    Xác nhận đặt hàng
+                </button>
+            </form>
+        </section>
+
+        <!-- 6. SECTION LỊCH SỬ ĐƠN HÀNG -->
+        <section class="order-history-section" id="order-history-section">
+            <div class="order-history-header">
+                <h2 class="section-title">Lịch sử đơn hàng</h2>
+                <p class="section-subtitle">Xem lại các đơn hàng bạn đã đặt trên PHUC-FOODIE.</p>
+                <div class="order-history-actions">
+                    <button type="button" class="btn-clear-history" id="btn-clear-history" onclick="refreshOrders()">
+                        ↻ Cập nhật đơn hàng
+                    </button>
+                </div>
+            </div>
+
+            <!-- Vùng hiển thị danh sách đơn hàng hoặc thông báo trống -->
+            <div id="order-history-list" class="order-history-list"></div>
+        </section>
+
+        <!-- 7. SECTION TÀI KHOẢN NGƯỜI DÙNG (AUTH SECTION - STEP 11) -->
+        <section class="auth-section" id="auth-section">
+            <div class="auth-wrapper">
+                <div class="auth-header">
+                    <h2 class="section-title">Tài khoản thành viên</h2>
+                    <p class="section-subtitle">Đăng nhập để nhận ưu đãi và quản lý đơn hàng dễ dàng hơn</p>
+                </div>
+
+                <!-- Thẻ thông tin khi ĐÃ ĐĂNG NHẬP -->
+                <div class="auth-card profile-card" id="user-profile-card" style="display: none;">
+                    <div class="profile-avatar">👤</div>
+                    <h3 class="profile-greeting" id="profile-greeting">Xin chào, Bạn!</h3>
+                    <div class="profile-info-box">
+                        <div class="profile-info-row">
+                            <span class="profile-info-label">📧 Email:</span>
+                            <strong class="profile-info-value" id="profile-email"></strong>
+                        </div>
+                        <div class="profile-info-row">
+                            <span class="profile-info-label">📞 Số điện thoại:</span>
+                            <strong class="profile-info-value" id="profile-phone"></strong>
+                        </div>
+                    </div>
+                    <div class="profile-actions">
+                        <button type="button" class="btn-auth-logout" id="btn-logout" onclick="logoutUser()">
+                            🚪 Đăng xuất
+                        </button>
+                        <button type="button" class="btn-auth-orders" onclick="scrollToSection('order-history-section')">
+                            📋 Xem lịch sử đơn hàng
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Thẻ Form khi CHƯA ĐĂNG NHẬP -->
+                <div class="auth-card" id="auth-forms-card">
+                    <!-- Tab chuyển đổi giữa Đăng nhập và Đăng ký -->
+                    <div class="auth-tabs" id="auth-tabs">
+                        <button type="button" class="auth-tab-btn active" id="tab-login" onclick="showLoginForm()">Đăng nhập</button>
+                        <button type="button" class="auth-tab-btn" id="tab-register" onclick="showRegisterForm()">Đăng ký</button>
+                    </div>
+
+                    <!-- 1. FORM ĐĂNG NHẬP -->
+                    <form class="auth-form" id="login-form" onsubmit="event.preventDefault(); handleLogin();">
+                        <h3 class="auth-form-title">Đăng nhập</h3>
+                        
+                        <div class="form-group">
+                            <label for="login-identifier">Email hoặc số điện thoại <span class="required">*</span></label>
+                            <input type="text" id="login-identifier" placeholder="Nhập email hoặc số điện thoại..." autocomplete="username">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="login-password">Mật khẩu <span class="required">*</span></label>
+                            <div class="password-input-wrap">
+                                <input type="password" id="login-password" placeholder="Nhập mật khẩu..." autocomplete="current-password">
+                                <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('login-password', this)" title="Hiện/ẩn mật khẩu">👁</button>
+                            </div>
+                        </div>
+
+                        <div class="auth-error-msg" id="login-error-msg" style="display: none;"></div>
+
+                        <button type="submit" class="btn-auth-submit" id="btn-login-submit">Đăng nhập</button>
+
+                        <div class="auth-links-row">
+                            <a href="javascript:void(0)" class="auth-link" onclick="showForgotPasswordForm()">Quên mật khẩu?</a>
+                        </div>
+
+                        <p class="auth-switch-text">
+                            Chưa có tài khoản? <a href="javascript:void(0)" class="auth-link-bold" onclick="showRegisterForm()">Đăng ký</a>
+                        </p>
+                    </form>
+
+                    <!-- 2. FORM ĐĂNG KÝ -->
+                    <form class="auth-form" id="register-form" style="display: none;" onsubmit="event.preventDefault(); handleRegister();">
+                        <h3 class="auth-form-title">Đăng ký tài khoản</h3>
+
+                        <div class="form-group">
+                            <label for="reg-name">Họ và tên <span class="required">*</span></label>
+                            <input type="text" id="reg-name" placeholder="Ví dụ: Nguyễn Văn Phúc" autocomplete="name">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reg-email">Email <span class="required">*</span></label>
+                            <input type="email" id="reg-email" placeholder="Ví dụ: phuc@example.com" autocomplete="email">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reg-phone">Số điện thoại <span class="required">*</span></label>
+                            <input type="tel" id="reg-phone" placeholder="Gồm 10 chữ số (Ví dụ: 0397083677)" autocomplete="tel">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reg-password">Mật khẩu <span class="required">*</span></label>
+                            <div class="password-input-wrap">
+                                <input type="password" id="reg-password" placeholder="Tối thiểu 8 ký tự..." autocomplete="new-password">
+                                <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('reg-password', this)" title="Hiện/ẩn mật khẩu">👁</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="reg-confirm-password">Xác nhận mật khẩu <span class="required">*</span></label>
+                            <div class="password-input-wrap">
+                                <input type="password" id="reg-confirm-password" placeholder="Nhập lại mật khẩu..." autocomplete="new-password">
+                                <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('reg-confirm-password', this)" title="Hiện/ẩn mật khẩu">👁</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group-checkbox">
+                            <label class="auth-checkbox-label">
+                                <input type="checkbox" id="reg-terms">
+                                <span>Tôi đồng ý với <a href="#" onclick="event.preventDefault(); document.getElementById('terms-dialog').showModal()">điều khoản sử dụng</a></span>
+                            </label>
+                        </div>
+
+                        <div class="auth-error-msg" id="reg-error-msg" style="display: none;"></div>
+
+                        <button type="submit" class="btn-auth-submit" id="btn-reg-submit">Đăng ký</button>
+
+                        <p class="auth-switch-text">
+                            Đã có tài khoản? <a href="javascript:void(0)" class="auth-link-bold" onclick="showLoginForm()">Đăng nhập</a>
+                        </p>
+                    </form>
+
+                    <!-- 3. FORM QUÊN MẬT KHẨU -->
+                    <div class="auth-form" id="forgot-password-form" style="display: none;">
+                        <h3 class="auth-form-title">Quên mật khẩu</h3>
+
+                        <!-- Bước 1: Nhập email để nhận mã xác nhận -->
+                        <div id="forgot-step-1">
+                            <p class="auth-desc">Vui lòng nhập địa chỉ email đã đăng ký. Mã xác nhận sẽ được gửi đến email của bạn khi chức năng email đã được cấu hình.</p>
+                            
+                            <div class="form-group">
+                                <label for="forgot-email">Email <span class="required">*</span></label>
+                                <input type="email" id="forgot-email" placeholder="Nhập email của bạn..." autocomplete="email">
+                            </div>
+
+                            <div class="auth-error-msg" id="forgot-error-msg" style="display: none;"></div>
+
+                            <button type="button" class="btn-auth-submit" id="btn-forgot-submit" onclick="handleForgotPassword()">Gửi yêu cầu</button>
+                            
+                            <p class="auth-switch-text">
+                                <a href="javascript:void(0)" class="auth-link-bold" onclick="showLoginForm()">← Quay lại Đăng nhập</a>
+                            </p>
+                        </div>
+
+                        <!-- Bước 2: Nhập mã xác nhận và mật khẩu mới -->
+                        <div id="forgot-step-2" style="display: none;">
+                            <div class="auth-demo-banner" id="forgot-demo-banner">
+                                <strong>🔑 Xác nhận qua email:</strong>
+                                <span id="forgot-demo-code-text">Kiểm tra hộp thư đến và thư mục spam.</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reset-code">Mã xác nhận <span class="required">*</span></label>
+                                <input type="text" id="reset-code" placeholder="Nhập mã 6 chữ số..." autocomplete="one-time-code">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reset-new-password">Mật khẩu mới <span class="required">*</span></label>
+                                <div class="password-input-wrap">
+                                    <input type="password" id="reset-new-password" placeholder="Tối thiểu 8 ký tự..." autocomplete="new-password">
+                                    <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('reset-new-password', this)" title="Hiện/ẩn mật khẩu">👁</button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reset-confirm-password">Xác nhận mật khẩu mới <span class="required">*</span></label>
+                                <div class="password-input-wrap">
+                                    <input type="password" id="reset-confirm-password" placeholder="Nhập lại mật khẩu mới..." autocomplete="new-password">
+                                    <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('reset-confirm-password', this)" title="Hiện/ẩn mật khẩu">👁</button>
+                                </div>
+                            </div>
+
+                            <div class="auth-error-msg" id="reset-error-msg" style="display: none;"></div>
+
+                            <button type="button" class="btn-auth-submit" id="btn-reset-submit" onclick="handleResetPassword()">Đặt lại mật khẩu</button>
+
+                            <p class="auth-switch-text">
+                                <a href="javascript:void(0)" class="auth-link-bold" onclick="showLoginForm()">← Quay lại Đăng nhập</a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 7. FOOTER CHUYÊN NGHIỆP CUỐI TRANG -->
+    <footer class="site-footer">
+        <div class="footer-container container">
+            <div class="footer-brand">
+                <h3 class="footer-logo">PHUC-FOODIE</h3>
+                <p><a href="/admin" class="footer-admin-link">Quản trị cửa hàng</a></p>
+                <p class="footer-tagline">Đặt món ngon – Giao tận nơi</p>
+            </div>
+            <div class="footer-contact">
+                <p>📞 SĐT: <a href="tel:0397083677">0397083677</a></p>
+                <p>✉️ Email: <a href="mailto:vongocphuc2732005@gmail.com">vongocphuc2732005@gmail.com</a></p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2026 PHUC-FOODIE. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- 8. MODAL CHI TIẾT SẢN PHẨM -->
+    <div id="product-modal" class="modal-overlay" style="display: none;" onclick="handleModalOverlayClick(event)">
+        <div class="modal-container" onclick="event.stopPropagation()">
+            <!-- Nút đóng modal -->
+            <button type="button" class="modal-close-btn" onclick="closeProductModal()" title="Đóng">&times;</button>
+            
+            <div class="modal-body">
+                <!-- Hình ảnh và badge sản phẩm -->
+                <div class="modal-image-wrap">
+                    <img id="modal-product-img" src="" alt="" class="modal-product-img">
+                    <span id="modal-product-badge" class="product-badge"></span>
+                </div>
+
+                <!-- Thông tin chi tiết sản phẩm -->
+                <div class="modal-info">
+                    <h3 id="modal-product-name" class="modal-product-name"></h3>
+                    <p id="modal-product-desc" class="modal-product-desc"></p>
+                    <div id="modal-product-price" class="modal-product-price"></div>
+                    
+                    <!-- Bộ chọn số lượng -->
+                    <div class="modal-quantity-wrap">
+                        <span class="modal-quantity-label">Số lượng:</span>
+                        <div class="modal-quantity-controls">
+                            <button type="button" class="btn-qty" onclick="decreaseModalQuantity()">-</button>
+                            <span id="modal-qty-value" class="modal-qty-value">1</span>
+                            <button type="button" class="btn-qty" onclick="increaseModalQuantity()">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Nút Thêm vào giỏ hàng -->
+                    <button type="button" class="btn-modal-add" onclick="addModalProductToCart()">
+                        Thêm vào giỏ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9. MODAL ĐẶT HÀNG THÀNH CÔNG (STEP 12) -->
+    <div id="order-success-modal" class="modal-overlay" style="display: none;" onclick="handleOrderSuccessOverlayClick(event)">
+        <div class="modal-container order-success-container" onclick="event.stopPropagation()">
+            <button type="button" class="modal-close-btn" onclick="closeOrderSuccessModal()" title="Đóng">&times;</button>
+            <div class="order-success-body">
+                <div class="order-success-icon">🎉</div>
+                <h3 class="order-success-title">Đặt hàng thành công!</h3>
+                <div class="order-success-info">
+                    <div class="order-success-row">
+                        <span>Mã đơn hàng:</span>
+                        <strong id="success-order-id"></strong>
+                    </div>
+                    <div class="order-success-row">
+                        <span>Tổng tiền:</span>
+                        <strong id="success-order-total" class="success-total-value"></strong>
+                    </div>
+                    <div class="order-success-row">
+                        <span>Thanh toán:</span>
+                        <strong id="success-payment-method"></strong>
+                    </div>
+                    <div class="order-success-row">
+                        <span>Trạng thái:</span>
+                        <strong id="success-payment-status"></strong>
+                    </div>
+                    <div class="order-success-row" id="row-success-zone" style="display: none;">
+                        <span>Khu vực giao:</span>
+                        <strong id="success-order-zone"></strong>
+                    </div>
+                    <div class="order-success-row" id="row-success-est-time" style="display: none;">
+                        <span>Dự kiến giao:</span>
+                        <strong id="success-order-est-time"></strong>
+                    </div>
+                </div>
+                <div class="order-success-actions">
+                    <button type="button" class="btn-success-history" onclick="closeOrderSuccessModal(); scrollToSection('order-history-section');">📋 Xem lịch sử đơn hàng</button>
+                    <button type="button" class="btn-success-continue" onclick="closeOrderSuccessModal(); scrollToSection('menu-section');">🛒 Tiếp tục mua hàng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <dialog id="terms-dialog"><h3>Điều khoản đặt món</h3><p>Vui lòng cung cấp thông tin giao hàng chính xác. Giá và phí giao hàng được hiển thị trước khi xác nhận. Bạn có thể hủy đơn khi cửa hàng chưa xác nhận. Thông tin liên hệ và địa chỉ chỉ được sử dụng để quản lý tài khoản và xử lý đơn hàng. COD được thanh toán khi nhận món. Chuyển khoản và QR trong bản này chỉ là mô phỏng.</p><button type="button" onclick="this.closest('dialog').close()">Đóng</button></dialog>
+    <!-- Vùng chứa thông báo Toast Notification -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Liên kết file JavaScript để xử lý tương tác và chức năng -->
+    <script src="script.js"></script>
+    <script src="api.js"></script>
+</body>
+</html>

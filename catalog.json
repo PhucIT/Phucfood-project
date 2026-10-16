@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1,
+    "name": "Burger bò",
+    "price": 50000,
+    "category": "Đồ ăn",
+    "image": "images/burger.jpg",
+    "description": "Burger bò thơm ngon với thịt bò nướng, rau xanh và sốt đặc biệt."
+  },
+  {
+    "id": 2,
+    "name": "Pizza phô mai",
+    "price": 60000,
+    "category": "Đồ ăn",
+    "image": "images/pizza.jpg",
+    "description": "Pizza đế mềm giòn phủ phô mai béo ngậy."
+  },
+  {
+    "id": 3,
+    "name": "Gà rán",
+    "price": 45000,
+    "category": "Đồ ăn",
+    "image": "images/chicken.jpg",
+    "description": "Gà rán giòn bên ngoài, mềm thơm bên trong."
+  },
+  {
+    "id": 4,
+    "name": "Mì cay",
+    "price": 40000,
+    "category": "Đồ ăn",
+    "image": "images/noodle.jpg",
+    "description": "Mì cay đậm đà kết hợp hải sản và rau củ."
+  },
+  {
+    "id": 5,
+    "name": "Trà sữa",
+    "price": 35000,
+    "category": "Nước uống",
+    "image": "images/milk-tea.jpg",
+    "description": "Trà sữa thơm béo, vị ngọt vừa phải."
+  },
+  {
+    "id": 6,
+    "name": "Coca Cola",
+    "price": 15000,
+    "category": "Nước uống",
+    "image": "images/coca.jpg",
+    "description": "Nước ngọt Coca-Cola mát lạnh."
+  },
+  {
+    "id": 7,
+    "name": "Cà phê sữa",
+    "price": 25000,
+    "category": "Nước uống",
+    "image": "images/coffee.jpg",
+    "description": "Cà phê thơm đậm, phù hợp dùng vào buổi sáng."
+  },
+  {
+    "id": 8,
+    "name": "Combo Burger + Coca",
+    "price": 60000,
+    "category": "Combo",
+    "image": "images/combo.jpg",
+    "description": "Combo burger kết hợp khoai tây và nước uống."
+  }
+]
