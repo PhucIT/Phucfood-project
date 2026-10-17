@@ -1,6 +1,6 @@
 # PHUC-FOODIE — Hướng dẫn cài đặt và vận hành (Backend MySQL Docker)
 
-Dự án tiếp tục giữ nguyên HTML/CSS/JavaScript thuần, giao diện hiện đại. Backend sử dụng Python + Flask + SQLAlchemy + PyMySQL kết nối tới MySQL 8.4 chạy trên Docker Desktop.
+Dự án dùng HTML/CSS/JavaScript thuần, giao diện hiện đại. Backend sử dụng Python + Flask + SQLAlchemy + PyMySQL kết nối tới MySQL chạy trên Docker Desktop.
 
 ---
 
