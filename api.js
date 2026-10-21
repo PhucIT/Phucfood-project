@@ -67,6 +67,7 @@ async function handleRegister() {
 async function logoutUser(event) {
     if (event) event.stopPropagation();
     if (orderSubmitting) return;
+    stopCustomerOrdersPolling();
     try {
         await api("/api/logout", {method:"POST",body:"{}"});
         serverUser = null; updateAuthUI(); showLoginForm(); await refreshOrders();
@@ -224,40 +225,127 @@ function showOrderSuccess(order) {
 }
 function closeOrderSuccessModal() { document.getElementById("order-success-modal").style.display="none"; lastModalFocus?.focus(); }
 function handleOrderSuccessOverlayClick(event) { if(event.target.id === "order-success-modal") closeOrderSuccessModal(); }
-async function refreshOrders() {
+
+// ========================================================
+// QUẢN LÝ TỰ ĐỘNG CẬP NHẬT ĐƠN HÀNG KHÁCH (8S RECURSIVE POLLING)
+// ========================================================
+let customerPollTimer = null;
+let customerPollSeq = 0;
+let customerPollBackoff = 8000;
+let isFirstCustomerLoad = true;
+let previousCustomerOrdersMap = new Map(); // orderId -> status string
+let lastRenderedCustomerSig = "";
+
+function stopCustomerOrdersPolling() {
+    if (customerPollTimer) {
+        clearTimeout(customerPollTimer);
+        customerPollTimer = null;
+    }
+    customerPollSeq++;
+}
+
+function scheduleNextCustomerOrdersPoll() {
+    if (customerPollTimer) {
+        clearTimeout(customerPollTimer);
+        customerPollTimer = null;
+    }
+    if (!serverUser || document.hidden) return;
+    customerPollTimer = setTimeout(() => {
+        refreshOrders({ isAuto: true });
+    }, customerPollBackoff);
+}
+
+function updateCustomerConnStatus(message) {
+    const el = document.getElementById("customer-order-conn-status");
+    if (!el) return;
+    if (message) {
+        el.textContent = `⚠️ ${message}`;
+        el.hidden = false;
+    } else {
+        el.hidden = true;
+    }
+}
+
+async function refreshOrders(options = {}) {
+    const isAuto = Boolean(options.isAuto);
     const container = document.getElementById("order-history-list");
     const refreshBtn = document.getElementById("btn-clear-history");
     if (refreshBtn) refreshBtn.style.display = serverUser ? "inline-flex" : "none";
-    if (!serverUser) { container.innerHTML = '<div class="order-empty-msg"><p>Đăng nhập để xem đơn hàng của bạn.</p></div>'; return; }
-    if (ordersBusy) return;
-    ordersBusy = true;
-    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "↻ Đang tải…"; }
+    if (!serverUser) {
+        stopCustomerOrdersPolling();
+        isFirstCustomerLoad = true;
+        previousCustomerOrdersMap.clear();
+        lastRenderedCustomerSig = "";
+        updateCustomerConnStatus(null);
+        if (container) container.innerHTML = '<div class="order-empty-msg"><p>Đăng nhập để xem đơn hàng của bạn.</p></div>';
+        return;
+    }
+    if (ordersBusy && isAuto) return;
     const requestedUserId = serverUser.id;
+    const seq = ++customerPollSeq;
+    if (!isAuto) {
+        ordersBusy = true;
+        if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "↻ Đang tải…"; }
+    }
     try {
         const {orders} = await api("/api/orders");
-        if (serverUser?.id !== requestedUserId) return;
-        container.innerHTML = orders.length ? orders.map(order => {
-            const estTimeFormatted = order.estimatedDeliveryTime ? (String(order.estimatedDeliveryTime).includes("ước tính") ? String(order.estimatedDeliveryTime) : `${order.estimatedDeliveryTime} (ước tính)`) : "";
-            return `<article class="order-card"><div class="order-card-header"><strong>${escapeHtml(order.id)}</strong><span class="order-status-badge ${escapeHtml(order.orderStatus)}">${escapeHtml(order.status)}</span></div><div class="order-card-meta"><p>${escapeHtml(order.orderTime)}</p><p>${escapeHtml(order.customerName)} · ${escapeHtml(order.customerPhone)}</p><p>${escapeHtml(order.customerAddress)}</p>${order.deliveryZoneName ? `<p>Khu vực giao: <strong>${escapeHtml(order.deliveryZoneName)}</strong></p>` : ""}${estTimeFormatted ? `<p class="hint">⏱ Dự kiến giao: ${escapeHtml(estTimeFormatted)}</p>` : ""}${order.customerNote ? `<p>Ghi chú: ${escapeHtml(order.customerNote)}</p>` : ""}</div><ul class="order-items-list">${order.items.map(i=>`<li class="order-item-row"><span>${escapeHtml(i.name)} × ${i.quantity}</span><span>${money(i.subtotal)}</span></li>`).join("")}</ul><div class="order-pricing-breakdown"><p>Tạm tính: ${money(order.subtotalPrice)} · Giao hàng: ${money(order.shippingFee)}</p><p>Giảm giá${order.voucherCode ? " ("+escapeHtml(order.voucherCode)+")" : ""}: ${money(order.discountAmount)}</p><div class="order-card-footer"><span>Tổng thanh toán</span><strong class="order-total-price">${money(order.totalPrice)}</strong></div><p>${paymentName(order.paymentMethod)} · ${paymentStatus(order.paymentStatus)}</p></div>${order.orderStatus === "pending" ? `<button type="button" class="order-cancel-btn" data-cancel="${escapeHtml(order.id)}">Hủy đơn</button>` : ""}</article>`;
-        }).join("") : '<div class="order-empty-msg"><p>Bạn chưa có đơn hàng nào.</p></div>';
-        container.querySelectorAll("[data-cancel]").forEach(button=>button.addEventListener("click", async()=>{
-            if (!confirm("Hủy đơn " + button.dataset.cancel + "?")) return;
-            button.disabled = true;
-            try {
-                await api(`/api/orders/${encodeURIComponent(button.dataset.cancel)}/cancel`,{method:"POST",body:"{}"});
-                try {
-                    const prodData = await api("/api/products");
-                    products.length = 0; products.push(...prodData.products);
-                    filterProducts();
-                } catch {}
-                await refreshOrders();
+        if (serverUser?.id !== requestedUserId || seq !== customerPollSeq) return;
+        updateCustomerConnStatus(null);
+        customerPollBackoff = 8000;
+
+        // Thông báo nhẹ khi trạng thái đơn thay đổi (không thông báo cho toàn bộ đơn ở lần tải đầu)
+        if (!isFirstCustomerLoad) {
+            for (const order of orders) {
+                const prev = previousCustomerOrdersMap.get(order.id);
+                if (prev && prev !== order.orderStatus) {
+                    showToast(`Đơn hàng #${order.id}`, `Trạng thái mới: ${order.status}`, "info");
+                }
             }
-            catch(e) { showToast("Lỗi",e.message,"warning"); button.disabled=false; }
-        }));
-    } catch(e) { container.textContent = e.message; }
+        }
+        previousCustomerOrdersMap.clear();
+        for (const order of orders) {
+            previousCustomerOrdersMap.set(order.id, order.orderStatus);
+        }
+        isFirstCustomerLoad = false;
+
+        // Chỉ cập nhật DOM khi danh sách đơn hoặc trạng thái thực sự thay đổi
+        const currentSig = orders.map(o => `${o.id}:${o.orderStatus}:${o.paymentStatus}:${o.status}`).join("|");
+        if (currentSig !== lastRenderedCustomerSig || !container.children.length) {
+            lastRenderedCustomerSig = currentSig;
+            container.innerHTML = orders.length ? orders.map(order => {
+                const estTimeFormatted = order.estimatedDeliveryTime ? (String(order.estimatedDeliveryTime).includes("ước tính") ? String(order.estimatedDeliveryTime) : `${order.estimatedDeliveryTime} (ước tính)`) : "";
+                return `<article class="order-card"><div class="order-card-header"><strong>${escapeHtml(order.id)}</strong><span class="order-status-badge ${escapeHtml(order.orderStatus)}">${escapeHtml(order.status)}</span></div><div class="order-card-meta"><p>${escapeHtml(order.orderTime)}</p><p>${escapeHtml(order.customerName)} · ${escapeHtml(order.customerPhone)}</p><p>${escapeHtml(order.customerAddress)}</p>${order.deliveryZoneName ? `<p>Khu vực giao: <strong>${escapeHtml(order.deliveryZoneName)}</strong></p>` : ""}${estTimeFormatted ? `<p class="hint">⏱ Dự kiến giao: ${escapeHtml(estTimeFormatted)}</p>` : ""}${order.customerNote ? `<p>Ghi chú: ${escapeHtml(order.customerNote)}</p>` : ""}</div><ul class="order-items-list">${order.items.map(i=>`<li class="order-item-row"><span>${escapeHtml(i.name)} × ${i.quantity}</span><span>${money(i.subtotal)}</span></li>`).join("")}</ul><div class="order-pricing-breakdown"><p>Tạm tính: ${money(order.subtotalPrice)} · Giao hàng: ${money(order.shippingFee)}</p><p>Giảm giá${order.voucherCode ? " ("+escapeHtml(order.voucherCode)+")" : ""}: ${money(order.discountAmount)}</p><div class="order-card-footer"><span>Tổng thanh toán</span><strong class="order-total-price">${money(order.totalPrice)}</strong></div><p>${paymentName(order.paymentMethod)} · ${paymentStatus(order.paymentStatus)}</p></div>${order.orderStatus === "pending" ? `<button type="button" class="order-cancel-btn" data-cancel="${escapeHtml(order.id)}">Hủy đơn</button>` : ""}</article>`;
+            }).join("") : '<div class="order-empty-msg"><p>Bạn chưa có đơn hàng nào.</p></div>';
+            container.querySelectorAll("[data-cancel]").forEach(button=>button.addEventListener("click", async()=>{
+                if (!confirm("Hủy đơn " + button.dataset.cancel + "?")) return;
+                button.disabled = true;
+                try {
+                    await api(`/api/orders/${encodeURIComponent(button.dataset.cancel)}/cancel`,{method:"POST",body:"{}"});
+                    try {
+                        const prodData = await api("/api/products");
+                        products.length = 0; products.push(...prodData.products);
+                        filterProducts();
+                    } catch {}
+                    await refreshOrders();
+                }
+                catch(e) { showToast("Lỗi",e.message,"warning"); button.disabled=false; }
+            }));
+        }
+    } catch(e) {
+        if (serverUser?.id !== requestedUserId || seq !== customerPollSeq) return;
+        if (isAuto) {
+            updateCustomerConnStatus("Mất kết nối server, đang thử lại...");
+            customerPollBackoff = Math.min(customerPollBackoff * 2, 60000);
+        } else {
+            container.textContent = e.message;
+        }
+    }
     finally {
-        ordersBusy = false;
-        if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = "↻ Cập nhật đơn hàng"; }
+        if (!isAuto) {
+            ordersBusy = false;
+            if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = "↻ Cập nhật đơn hàng"; }
+        }
+        scheduleNextCustomerOrdersPoll();
     }
 }
 
@@ -299,6 +387,30 @@ document.addEventListener("DOMContentLoaded", async()=>{
             if(Array.isArray(saved)) cart=saved.filter(i=>Number.isInteger(i.id)&&Number.isInteger(i.quantity)&&i.quantity>0&&i.quantity<=99).map(i=>{const p=products.find(p=>p.id===i.id&&p.available);return p?{...p,quantity:i.quantity}:null;}).filter(Boolean);
         } catch {}
         cartHydrated = true; apiReady = true; filterProducts(); renderCart(); updateCartCount(); updateAuthUI(); await refreshOrders();
+
+        if(typeof window !== "undefined" && window.location && window.location.search) {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const authErr = urlParams.get("auth_error");
+                if(authErr) {
+                    if(typeof showToast === "function") {
+                        showToast("Đăng nhập Google", authErr, "warning");
+                    }
+                    const cleanUrl = window.location.pathname + (window.location.hash || "");
+                    window.history.replaceState({}, document.title, cleanUrl);
+                }
+            } catch {}
+        }
+
+        const googleBtn = document.getElementById("btn-google-login");
+        if(googleBtn && sessionData && sessionData.googleAuthEnabled === false) {
+            googleBtn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                if(typeof showToast === "function") {
+                    showToast("Đăng nhập Google", "Đăng nhập Google hiện chưa được kích hoạt trên hệ thống.", "warning");
+                }
+            });
+        }
     } catch(e) {
         const banner=document.getElementById("connection-error"); banner.hidden=false; banner.textContent=e.message;
         document.getElementById("product-list").textContent="Chưa tải được danh sách món.";
@@ -306,7 +418,24 @@ document.addEventListener("DOMContentLoaded", async()=>{
     setInterval(()=>{ 
         if(!document.hidden) {
             fetchStoreInfo();
-            if(serverUser) refreshOrders();
         }
-    }, 20000);
+    }, 30000);
 });
+
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        stopCustomerOrdersPolling();
+    } else {
+        if (serverUser) {
+            customerPollBackoff = 8000;
+            refreshOrders({ isAuto: true });
+        }
+    }
+});
+
+if (typeof window !== "undefined") {
+    window.refreshOrders = refreshOrders;
+    window.stopCustomerOrdersPolling = stopCustomerOrdersPolling;
+    window.getCustomerPollTimer = () => customerPollTimer;
+}
+

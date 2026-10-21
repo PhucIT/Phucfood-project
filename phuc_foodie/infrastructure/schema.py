@@ -9,8 +9,8 @@ SCHEMA_STATEMENTS = [
       id INT AUTO_INCREMENT PRIMARY KEY,
       full_name VARCHAR(100) NOT NULL,
       email VARCHAR(254) NOT NULL UNIQUE,
-      phone VARCHAR(20) NOT NULL UNIQUE,
-      password_hash VARCHAR(255) NOT NULL,
+      phone VARCHAR(20) NULL DEFAULT NULL UNIQUE,
+      password_hash VARCHAR(255) NULL DEFAULT NULL,
       role ENUM('customer', 'admin') NOT NULL DEFAULT 'customer'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """,
@@ -95,6 +95,20 @@ SCHEMA_STATEMENTS = [
       updated_at VARCHAR(50) NOT NULL,
       CONSTRAINT chk_zone_fee CHECK (fee >= 0)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS user_identities (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      provider VARCHAR(50) NOT NULL,
+      provider_id VARCHAR(191) NOT NULL,
+      email VARCHAR(254) NOT NULL,
+      created_at VARCHAR(50) NOT NULL,
+      updated_at VARCHAR(50) NOT NULL,
+      CONSTRAINT fk_user_identities_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      CONSTRAINT uq_provider_provider_id UNIQUE (provider, provider_id),
+      INDEX idx_user_identities_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
 ]
 
@@ -106,6 +120,12 @@ def init_schema(engine, seed_products_if_empty: bool = True):
             conn.execute(text(stmt))
 
         # Kiểm tra và thêm cột nếu chưa có (migration an toàn)
+        user_cols = {r[0]: r for r in conn.execute(text("SHOW COLUMNS FROM users")).fetchall()}
+        if "password_hash" in user_cols and user_cols["password_hash"][2] == "NO":
+            conn.execute(text("ALTER TABLE users MODIFY COLUMN password_hash VARCHAR(255) NULL DEFAULT NULL"))
+        if "phone" in user_cols and user_cols["phone"][2] == "NO":
+            conn.execute(text("ALTER TABLE users MODIFY COLUMN phone VARCHAR(20) NULL DEFAULT NULL"))
+
         product_cols = [r[0] for r in conn.execute(text("SHOW COLUMNS FROM products")).fetchall()]
         if "stock_quantity" not in product_cols:
             conn.execute(text("ALTER TABLE products ADD COLUMN stock_quantity INT NULL DEFAULT NULL"))

@@ -29,15 +29,19 @@ class FoodieTests(unittest.TestCase):
         init_schema(cls.engine, seed_products_if_empty=False)
 
     def setUp(self):
-        # Dọn dẹp database test trước mỗi test case
+        # Dọn dẹp database test trước mỗi test case (chỉ thao tác trên phuc_foodie_test)
         with self.engine.begin() as conn:
+            current_db = conn.execute(text("SELECT DATABASE()")).scalar()
+            self.assertEqual(current_db, "phuc_foodie_test")
             conn.execute(text("DELETE FROM orders"))
             conn.execute(text("DELETE FROM sessions"))
+            conn.execute(text("DELETE FROM user_identities"))
             conn.execute(text("DELETE FROM users"))
             conn.execute(text("DELETE FROM products"))
             conn.execute(text("DELETE FROM reset_tokens"))
             conn.execute(text("DELETE FROM rate_limits"))
             conn.execute(text("DELETE FROM delivery_zones"))
+            conn.execute(text("ALTER TABLE user_identities AUTO_INCREMENT = 1"))
             conn.execute(text("ALTER TABLE users AUTO_INCREMENT = 1"))
             conn.execute(text("ALTER TABLE products AUTO_INCREMENT = 1"))
             conn.execute(text("ALTER TABLE delivery_zones AUTO_INCREMENT = 1"))

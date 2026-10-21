@@ -777,6 +777,21 @@ header {
     box-shadow: 0 4px 10px rgba(220, 38, 38, 0.2);
 }
 
+.order-conn-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
 .order-history-list {
     max-width: 850px;
     margin: 0 auto;
@@ -1643,6 +1658,74 @@ header {
 
 .btn-auth-submit:active {
     transform: scale(0.99);
+}
+
+/* Dải phân cách HOẶC trong form đăng nhập */
+.auth-divider {
+    display: flex;
+    align-items: center;
+    margin: 16px 0 12px;
+    text-align: center;
+    color: #64748b;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.auth-divider span {
+    padding: 0 10px;
+    letter-spacing: 0.5px;
+}
+
+/* Nút Tiếp tục với Google */
+.btn-google-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    background-color: #ffffff;
+    color: #1e293b;
+    border: 1.5px solid #cbd5e1;
+    padding: 11px 20px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    box-sizing: border-box;
+}
+
+.btn-google-login:hover {
+    background-color: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+.btn-google-login:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.btn-google-login:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.btn-google-login .google-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
 }
 
 .auth-links-row {

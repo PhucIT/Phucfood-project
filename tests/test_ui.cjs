@@ -167,6 +167,13 @@ async function run() {
   await w.handleRegister();
   check('Đăng ký dùng đúng trường form và chuyển sang đăng nhập', () => assert.equal(w.document.getElementById('login-identifier').value, 'new@example.test'));
 
+  check('Nút Tiếp tục với Google tồn tại và trỏ tới /api/auth/google', () => {
+    const googleBtn = w.document.getElementById('btn-google-login');
+    assert.ok(googleBtn, 'Nút Google phải tồn tại');
+    assert.equal(googleBtn.getAttribute('href'), '/api/auth/google');
+    assert.ok(googleBtn.textContent.includes('Tiếp tục với Google'));
+  });
+
   w.document.getElementById('login-password').value = 'TestPass123';
   await w.handleLogin();
   check('Thông tin phiên hiện trên header', () => assert.ok(w.document.getElementById('user-display-text').textContent.includes('Khách thử')));
@@ -218,6 +225,59 @@ async function run() {
   });
 
   w.closeOrderSuccessModal();
+
+  // ==========================================
+  // KIỂM THỬ TỰ ĐỘNG CẬP NHẬT ĐƠN HÀNG KHÁCH
+  // ==========================================
+  // 1. Admin đổi trạng thái đơn -> Khách nhận thông báo toast nhẹ và cập nhật DOM
+  orderList[0].orderStatus = 'preparing';
+  orderList[0].status = 'Đang chuẩn bị';
+  await w.refreshOrders({ isAuto: true });
+  check('Khách tự cập nhật trạng thái đơn mới và nhận thông báo toast', () => {
+    const badge = w.document.querySelector('.order-status-badge');
+    assert.ok(badge && badge.textContent.includes('Đang chuẩn bị'));
+    const toasts = w.document.querySelectorAll('.toast-title');
+    const toast = toasts[toasts.length - 1];
+    assert.ok(toast && toast.textContent.includes('PF-TEST'));
+  });
+
+  // 2. Không thông báo trùng lặp khi trạng thái không thay đổi
+  const toastCountBefore = w.document.querySelectorAll('.toast').length;
+  await w.refreshOrders({ isAuto: true });
+  check('Không phát thông báo lặp nếu trạng thái đơn hàng không thay đổi', () => {
+    const toastCountAfter = w.document.querySelectorAll('.toast').length;
+    assert.equal(toastCountAfter, toastCountBefore);
+  });
+
+  // 3. Tab bị ẩn thì dừng timer, khi tab hiện lại thì tiếp tục cập nhật
+  Object.defineProperty(w.document, 'hidden', { value: true, configurable: true, writable: true });
+  w.document.dispatchEvent(new w.Event('visibilitychange'));
+  check('Tab bị ẩn sẽ dừng timer polling của khách', () => {
+    assert.equal(w.getCustomerPollTimer(), null);
+  });
+
+  Object.defineProperty(w.document, 'hidden', { value: false, configurable: true, writable: true });
+  orderList[0].orderStatus = 'delivering';
+  orderList[0].status = 'Đang giao';
+  w.document.dispatchEvent(new w.Event('visibilitychange'));
+  await new Promise(r => setTimeout(r, 20));
+  check('Tab hiện lại sẽ tiếp tục cập nhật ngay lập tức', () => {
+    const badge = w.document.querySelector('.order-status-badge');
+    assert.ok(badge && badge.textContent.includes('Đang giao'));
+  });
+
+  // 4. Lỗi mạng trong auto-poll: danh sách đơn không bị xóa và hiển thị cảnh báo kết nối
+  const origCustomerFetch = w.fetch;
+  w.fetch = async () => { throw new TypeError('Network error'); };
+  await w.refreshOrders({ isAuto: true });
+  check('Lỗi mạng trong polling không xóa danh sách đơn hàng và hiển thị trạng thái kết nối', () => {
+    assert.ok(w.document.querySelector('.order-card'));
+    const connStatus = w.document.getElementById('customer-order-conn-status');
+    assert.equal(connStatus.hidden, false);
+    assert.ok(connStatus.textContent.includes('Mất kết nối server'));
+  });
+  w.fetch = origCustomerFetch;
+
   await w.logoutUser();
   check('Đăng xuất ẩn lịch sử đơn', () => assert.ok(w.document.getElementById('order-history-list').textContent.includes('Đăng nhập')));
   check('Không tạo khóa LocalStorage mật khẩu/phiên', () => {
@@ -232,7 +292,8 @@ async function run() {
   // ==========================================
   const admin = new JSDOM(fs.readFileSync(root + 'admin.html', 'utf8'), {
     url: 'http://localhost/admin',
-    runScripts: 'outside-only'
+    runScripts: 'outside-only',
+    pretendToBeVisual: true
   });
   const aw = admin.window;
   aw.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -420,6 +481,87 @@ async function run() {
     assert.equal(aw.document.getElementById('orders-panel').hidden, false);
   });
 
+  // ==========================================
+  // KIỂM THỬ TỰ ĐỘNG CẬP NHẬT ĐƠN HÀNG ADMIN
+  // ==========================================
+  // 1. Phát hiện đơn mới theo ID và hiển thị thông báo trực quan Có N đơn mới
+  orderList.push({
+    id: 'PF-NEW-999',
+    items: [{ id: 2, name: 'Trà đào', price: 25000, quantity: 2, subtotal: 50000 }],
+    customerName: 'Khách Vip',
+    customerPhone: '0911223344',
+    customerAddress: '456 Lê Lợi, Q1',
+    customerNote: 'Giao nhanh',
+    deliveryZoneName: 'Quận 1',
+    estimatedDeliveryTime: '20 phút',
+    subtotalPrice: 50000,
+    shippingFee: 20000,
+    discountAmount: 0,
+    totalPrice: 70000,
+    orderTime: '08/10/2026',
+    status: 'Chờ xác nhận',
+    orderStatus: 'pending',
+    paymentMethod: 'cod',
+    paymentStatus: 'pending'
+  });
+
+  await aw.pollAdminOrders();
+  check('Admin phát hiện đơn mới theo ID và hiển thị thông báo trực quan Có N đơn mới', () => {
+    const alertEl = aw.document.getElementById('new-orders-alert');
+    const countEl = aw.document.getElementById('new-orders-count');
+    const badgeEl = aw.document.getElementById('orders-new-badge');
+    assert.equal(alertEl.hidden, false);
+    assert.equal(countEl.textContent, '1');
+    assert.equal(badgeEl.hidden, false);
+    assert.equal(badgeEl.textContent, '1');
+  });
+
+  // 2. Bấm "Đã xem" ẩn cảnh báo đơn mới
+  aw.document.getElementById('btn-dismiss-new-orders').click();
+  check('Bấm ẩn cảnh báo đơn mới sẽ reset số lượng và ẩn badge', () => {
+    assert.equal(aw.document.getElementById('new-orders-alert').hidden, true);
+    assert.equal(aw.document.getElementById('orders-new-badge').hidden, true);
+  });
+
+  // 3. Giữ bộ lọc trạng thái khi tự cập nhật
+  aw.document.getElementById('status-filter').value = 'delivered';
+  aw.document.getElementById('status-filter').dispatchEvent(new aw.Event('change'));
+  await aw.pollAdminOrders();
+  check('Giữ nguyên bộ lọc trạng thái khi tự cập nhật đơn hàng admin', () => {
+    assert.equal(aw.document.getElementById('status-filter').value, 'delivered');
+  });
+  aw.document.getElementById('status-filter').value = 'all';
+  aw.document.getElementById('status-filter').dispatchEvent(new aw.Event('change'));
+
+  // 4. Chuyển sang tab khác dừng polling đơn hàng admin
+  aw.document.getElementById('products-tab').click();
+  check('Chuyển sang tab khác dừng polling đơn hàng admin', () => {
+    assert.equal(aw.getAdminOrdersPollTimer(), null);
+  });
+
+  // 5. Quay lại tab đơn hàng tự khôi phục polling ngay
+  aw.document.getElementById('orders-tab').click();
+  check('Quay lại tab đơn hàng admin tự khôi phục polling ngay', () => {
+    assert.equal(aw.document.getElementById('orders-panel').hidden, false);
+    assert.equal(aw.document.getElementById('orders-tab').classList.contains('active'), true);
+  });
+
+  // 6. Lỗi mạng admin: không xóa danh sách đơn và hiển thị cảnh báo kết nối
+  const origAdminFetch = aw.fetch;
+  aw.fetch = async (reqPath) => {
+    if (reqPath === '/api/admin/orders') throw new TypeError('Network down');
+    return origAdminFetch(reqPath);
+  };
+  await aw.pollAdminOrders();
+  check('Lỗi mạng không xóa danh sách đơn admin và hiển thị cảnh báo kết nối', () => {
+    assert.ok(aw.document.querySelectorAll('.order').length > 0);
+    const conn = aw.document.getElementById('admin-order-conn-status');
+    assert.equal(conn.hidden, false);
+    assert.ok(conn.textContent.includes('Mất kết nối'));
+  });
+  aw.fetch = origAdminFetch;
+
+  aw.stopAdminOrdersPolling();
   admin.window.close();
   console.log(`${passed} kiểm thử JavaScript/DOM PASS`);
 }

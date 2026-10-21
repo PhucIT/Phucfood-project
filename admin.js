@@ -36,20 +36,154 @@ $("admin-login").addEventListener("submit",async e=>{
 });
 $("logout").addEventListener("click",async()=>{
     if(!confirmDiscardChanges())return;
+    stopAdminOrdersPolling();
+    isFirstAdminLoad = true;
+    seenOrderIds.clear();
+    unreadNewOrdersCount = 0;
+    updateNewOrdersUI();
     try{await api("/api/admin/logout",{method:"POST",body:"{}"});currentUser=null;orders=[];products=[];settingsData=null;zonesData=[];$("order-list").replaceChildren();$("product-grid").replaceChildren();$("preview-grid").replaceChildren();$("notice").hidden=true;showSession();}catch(e){notify(e.message,true);}
 });
+
+// ========================================================
+// QUẢN LÝ TỰ ĐỘNG CẬP NHẬT ĐƠN HÀNG ADMIN (8S RECURSIVE POLLING)
+// ========================================================
+let adminOrdersPollTimer = null;
+let adminOrdersPollSeq = 0;
+let adminOrdersPollBackoff = 8000;
+let isFirstAdminLoad = true;
+const seenOrderIds = new Set();
+let unreadNewOrdersCount = 0;
+let lastRenderedAdminSig = "";
+let lastAdminFilter = "all";
+
+function stopAdminOrdersPolling() {
+    if (adminOrdersPollTimer) {
+        clearTimeout(adminOrdersPollTimer);
+        adminOrdersPollTimer = null;
+    }
+    adminOrdersPollSeq++;
+}
+
+function scheduleNextAdminOrdersPoll() {
+    if (adminOrdersPollTimer) {
+        clearTimeout(adminOrdersPollTimer);
+        adminOrdersPollTimer = null;
+    }
+    if (typeof document === "undefined" || currentUser?.role !== "admin" || document.hidden || currentTab !== "orders") return;
+    adminOrdersPollTimer = setTimeout(() => {
+        pollAdminOrders();
+    }, adminOrdersPollBackoff);
+}
+
+function startAdminOrdersPolling(immediate = false) {
+    if (adminOrdersPollTimer) {
+        clearTimeout(adminOrdersPollTimer);
+        adminOrdersPollTimer = null;
+    }
+    if (typeof document === "undefined" || currentUser?.role !== "admin" || document.hidden || currentTab !== "orders") return;
+    if (immediate) {
+        pollAdminOrders();
+    } else {
+        adminOrdersPollTimer = setTimeout(pollAdminOrders, adminOrdersPollBackoff);
+    }
+}
+
+function updateNewOrdersUI() {
+    const alertEl = $("new-orders-alert");
+    const countEl = $("new-orders-count");
+    const badgeEl = $("orders-new-badge");
+    if (unreadNewOrdersCount > 0) {
+        if (countEl) countEl.textContent = unreadNewOrdersCount;
+        if (alertEl) alertEl.hidden = false;
+        if (badgeEl) {
+            badgeEl.textContent = unreadNewOrdersCount;
+            badgeEl.hidden = false;
+        }
+    } else {
+        if (alertEl) alertEl.hidden = true;
+        if (badgeEl) badgeEl.hidden = true;
+    }
+}
+
+function dismissNewOrders() {
+    unreadNewOrdersCount = 0;
+    updateNewOrdersUI();
+}
+
+function updateAdminConnStatus(message) {
+    const el = $("admin-order-conn-status");
+    if (!el) return;
+    if (message) {
+        el.textContent = `⚠️ ${message}`;
+        el.hidden = false;
+    } else {
+        el.hidden = true;
+    }
+}
+
+function trackSeenOrders(newOrdersList) {
+    let newCount = 0;
+    if (isFirstAdminLoad) {
+        for (const o of newOrdersList) {
+            seenOrderIds.add(o.id);
+        }
+        isFirstAdminLoad = false;
+    } else {
+        for (const o of newOrdersList) {
+            if (!seenOrderIds.has(o.id)) {
+                seenOrderIds.add(o.id);
+                newCount++;
+            }
+        }
+        if (newCount > 0) {
+            unreadNewOrdersCount += newCount;
+            updateNewOrdersUI();
+        }
+    }
+}
+
+async function pollAdminOrders() {
+    if (typeof document === "undefined" || currentUser?.role !== "admin" || document.hidden || currentTab !== "orders" || actionBusy) {
+        scheduleNextAdminOrdersPoll();
+        return;
+    }
+    const seq = ++adminOrdersPollSeq;
+    try {
+        const data = await api("/api/admin/orders");
+        if (currentUser?.role !== "admin" || seq !== adminOrdersPollSeq) return;
+        orders = data.orders;
+        updateAdminConnStatus(null);
+        adminOrdersPollBackoff = 8000;
+        trackSeenOrders(orders);
+        renderOrders();
+    } catch (e) {
+        if (currentUser?.role !== "admin" || seq !== adminOrdersPollSeq) return;
+        updateAdminConnStatus("Mất kết nối server, đang thử lại...");
+        adminOrdersPollBackoff = Math.min(adminOrdersPollBackoff * 2, 60000);
+    } finally {
+        scheduleNextAdminOrdersPoll();
+    }
+}
 
 async function refresh(){
     if(refreshing||currentUser?.role!=="admin")return;
     if((formDirty&&$("product-dialog")?.open)||settingsDirty)return;
     refreshing=true;$("refresh").disabled=true;
+    adminOrdersPollSeq++;
     try{
         const [o,p,s]=await Promise.all([api("/api/admin/orders"),api("/api/products"),api("/api/admin/store/settings")]);
         orders=o.orders;products=p.products;
         settingsData=s.settings;zonesData=s.zones;
+        trackSeenOrders(orders);
         renderOrders();renderProducts();renderPreview();renderStoreSettings();
+        adminOrdersPollBackoff=8000;
+        updateAdminConnStatus(null);
     }
-    catch(e){notify(e.message,true);}finally{refreshing=false;$("refresh").disabled=false;}
+    catch(e){notify(e.message,true);}
+    finally{
+        refreshing=false;$("refresh").disabled=false;
+        scheduleNextAdminOrdersPoll();
+    }
 }
 
 function renderOrders(){
@@ -57,7 +191,18 @@ function renderOrders(){
     $("active-count").textContent=orders.filter(o=>["confirmed","preparing","delivering"].includes(o.orderStatus)).length;
     $("delivered-count").textContent=orders.filter(o=>o.orderStatus==="delivered").length;
     $("revenue").textContent=money(orders.filter(o=>o.orderStatus==="delivered"&&o.paymentMethod==="cod"&&o.paymentStatus==="paid").reduce((sum,o)=>sum+o.totalPrice,0));
-    const visible=orders.filter(o=>$("status-filter").value==="all"||o.orderStatus===$("status-filter").value);
+
+    const currentFilter = $("status-filter")?.value || "all";
+    const currentSig = orders.map(o => `${o.id}:${o.orderStatus}:${o.paymentStatus}`).join("|");
+
+    // Nếu dữ liệu đơn và bộ lọc không đổi và danh sách đã có phần tử, không vẽ lại DOM để giữ focus và vị trí cuộn
+    if (currentSig === lastRenderedAdminSig && currentFilter === lastAdminFilter && $("order-list").children.length) {
+        return;
+    }
+    lastRenderedAdminSig = currentSig;
+    lastAdminFilter = currentFilter;
+
+    const visible=orders.filter(o=>currentFilter==="all"||o.orderStatus===currentFilter);
     $("order-list").innerHTML=visible.length?visible.map(o=>`<article class="order"><div class="order-header"><strong>${esc(o.id)}</strong><span class="badge ${esc(o.orderStatus)}">${esc(o.status)}</span></div><div class="order-info"><div><p class="hint">${esc(o.orderTime)}</p><p><strong>${esc(o.customerName)}</strong> · ${esc(o.customerPhone)}</p><p>${esc(o.customerAddress)}</p>${o.deliveryZoneName?`<p>Khu vực giao: <strong>${esc(o.deliveryZoneName)}</strong></p>`:""}${o.estimatedDeliveryTime?`<p class="hint">⏱ Dự kiến giao: ${esc(o.estimatedDeliveryTime)}</p>`:""}${o.customerNote?`<p>Ghi chú: ${esc(o.customerNote)}</p>`:""}<ul>${o.items.map(i=>`<li>${esc(i.name)} × ${i.quantity} — ${money(i.subtotal)}</li>`).join("")}</ul></div><div><p>Tạm tính: ${money(o.subtotalPrice)}</p><p>Giao hàng: ${money(o.shippingFee)}</p><p>Giảm: ${money(o.discountAmount)} ${o.voucherCode?"("+esc(o.voucherCode)+")":""}</p><strong class="order-total">${money(o.totalPrice)}</strong><p>${o.paymentMethod==="cod"?"Tiền mặt khi nhận hàng":"Thanh toán DEMO — không có giao dịch thật"}</p><p class="hint">${o.paymentStatus==="paid"?"Đã thu tiền COD":o.paymentStatus==="pending"?"Chờ thu tiền":"Đã xác nhận mô phỏng"}</p></div></div><div class="order-actions">${transitions[o.orderStatus].map(state=>`<button data-order="${esc(o.id)}" data-state="${state}" class="${state==="cancelled"?"danger":"primary"}">${state==="delivered"&&o.paymentMethod!=="cod"?"Đã giao (DEMO)":labels[state]}</button>`).join("")}</div></article>`).join(""):'<p>Không có đơn hàng trong trạng thái này.</p>';
     $("order-list").querySelectorAll("[data-state]").forEach(button=>button.addEventListener("click",async()=>{
         if(actionBusy)return;
@@ -444,7 +589,8 @@ $("product-form").addEventListener("submit",async e=>{
 });
 setupProductImagePreview();
 $("refresh").addEventListener("click",refresh);
-$("status-filter").addEventListener("change",renderOrders);
+$("status-filter")?.addEventListener("change",renderOrders);
+$("btn-dismiss-new-orders")?.addEventListener("click",dismissNewOrders);
 
 /* ========================================================
    CẤU HÌNH CỬA HÀNG & KHU VỰC GIAO HÀNG
@@ -887,6 +1033,11 @@ function switchTab(tab){
         $(`${name}-tab`).classList.toggle("active", isTarget);
         $(`${name}-tab`).setAttribute("aria-selected", String(isTarget));
     });
+    if(tab === "orders"){
+        startAdminOrdersPolling(true);
+    } else {
+        stopAdminOrdersPolling();
+    }
     if(tab === "preview"){
         renderPreview();
     }
@@ -912,5 +1063,27 @@ $("header-preview-btn").addEventListener("click", () => switchTab("preview"));
     }
 })();
 
-setInterval(()=>{if(!document.hidden&&!$("product-dialog").open&&!actionBusy)refresh();},20000);
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        stopAdminOrdersPolling();
+    } else {
+        if (currentUser?.role === "admin" && currentTab === "orders") {
+            adminOrdersPollBackoff = 8000;
+            startAdminOrdersPolling(true);
+        }
+    }
+});
+
+setInterval(() => {
+    if (!document.hidden && !$("product-dialog")?.open && !actionBusy && currentTab !== "orders") {
+        refresh();
+    }
+}, 30000);
+
+if (typeof window !== "undefined") {
+    window.pollAdminOrders = pollAdminOrders;
+    window.startAdminOrdersPolling = startAdminOrdersPolling;
+    window.stopAdminOrdersPolling = stopAdminOrdersPolling;
+    window.getAdminOrdersPollTimer = () => adminOrdersPollTimer;
+}
 

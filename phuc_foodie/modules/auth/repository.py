@@ -72,3 +72,36 @@ class AuthRepository:
     @staticmethod
     def delete_reset_token(conn, email: str):
         conn.execute("DELETE FROM reset_tokens WHERE email = :email", {"email": email})
+
+    @staticmethod
+    def get_identity(conn, provider: str, provider_id: str) -> Optional[dict]:
+        return conn.execute(
+            "SELECT * FROM user_identities WHERE provider = :provider AND provider_id = :pid",
+            {"provider": provider, "pid": provider_id}
+        ).fetchone()
+
+    @staticmethod
+    def get_user_with_identity(conn, provider: str, provider_id: str) -> Optional[dict]:
+        return conn.execute(
+            "SELECT u.* FROM users u "
+            "JOIN user_identities i ON i.user_id = u.id "
+            "WHERE i.provider = :provider AND i.provider_id = :pid",
+            {"provider": provider, "pid": provider_id}
+        ).fetchone()
+
+    @staticmethod
+    def create_oauth_customer(conn, full_name: str, email: str, provider: str, provider_id: str) -> dict:
+        cur = conn.execute(
+            "INSERT INTO users (full_name, email, phone, password_hash, role) "
+            "VALUES (:name, :email, NULL, NULL, 'customer')",
+            {"name": full_name, "email": email}
+        )
+        user_id = cur.lastrowid
+        import datetime
+        now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO user_identities (user_id, provider, provider_id, email, created_at, updated_at) "
+            "VALUES (:uid, :provider, :pid, :email, :created, :updated)",
+            {"uid": user_id, "provider": provider, "pid": provider_id, "email": email, "created": now_str, "updated": now_str}
+        )
+        return conn.execute("SELECT * FROM users WHERE id = :id", {"id": user_id}).fetchone()

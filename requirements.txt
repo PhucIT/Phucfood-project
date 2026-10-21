@@ -7,3 +7,5 @@ PyMySQL==1.2.3
 cryptography==50.0.2
 python-dotenv==1.2.4
 Pillow==12.3.0
+Authlib==1.9.1
+requests==2.34.2

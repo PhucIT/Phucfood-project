@@ -1,26 +1,49 @@
-# Kết quả kiểm thử — PHUC-FOODIE (Tái cấu trúc Modular Monolith & Tính năng)
+# Kết quả kiểm thử — PHUC-FOODIE (Tự Cập Nhật Đơn Hàng & Modular Monolith)
 
-## TỔNG HỢP KIỂM THỬ SAU KHI SỬA LỖI & TÁI CẤU TRÚC: 85/85 TESTS PASS (100% OK)
+## TỔNG HỢP KIỂM THỬ: 111/111 TESTS PASS (100% OK)
 
-1. **Bộ kiểm thử chính server (`tests/test_server.py`)**: **36/36 PASS (100% OK, ~31.5s)**
+1. **Bộ kiểm thử Google OAuth 2.0 / OpenID Connect (`tests/test_google_oauth.py`)**: **14/14 PASS (100% OK, ~9.6s)**
+   - Lệnh chạy: `.\.venv\Scripts\python.exe -m unittest tests/test_google_oauth.py`
+   - Xác minh chuyển hướng đăng nhập Google có đầy đủ `state` (chống CSRF) và `nonce` (chống replay ID token).
+   - Xác minh callback hợp lệ tạo tài khoản khách (`role='customer'`), `phone=NULL`, `password_hash=NULL`, liên kết danh tính `user_identities` (`UNIQUE(provider, provider_id)`) và cấp cookie phiên `foodie_customer_session`.
+   - Xác minh đăng nhập lại cùng `sub` không tạo bản ghi trùng lặp trong cả 2 bảng `users` và `user_identities`.
+   - Xác minh email chưa xác minh (`email_verified: False`) thất bại an toàn, không tạo tài khoản hoặc phiên.
+   - Xác minh người dùng bấm hủy (`error=access_denied`) chuyển hướng về trang chủ kèm thông báo thân thiện bằng tiếng Việt.
+   - Xác minh state không khớp (`MismatchingStateError`) hoặc token không hợp lệ (`OAuthError`) thất bại an toàn, không lộ secret, token hay traceback.
+   - Xác minh email đã tồn tại với tài khoản mật khẩu không tự động liên kết danh tính, yêu cầu đăng nhập bằng phương thức cũ.
+   - Xác minh chặn xung đột với email tài khoản quản trị viên, tuyệt đối không cấp quyền admin hay đăng nhập vào tài khoản admin qua Google.
+   - Xác minh phiên khách và phiên quản trị viên cùng tồn tại độc lập trong cùng một trình duyệt (Dual-session isolation).
+   - Xác minh luồng đăng ký, đăng nhập mật khẩu và đăng xuất truyền thống vẫn hoạt động 100% không bị ảnh hưởng.
+   - Xác minh tài khoản tạo qua Google không thể đăng nhập hoặc đặt lại mật khẩu bằng mật khẩu ngẫu nhiên (`password_hash IS NULL`).
+   - Xác minh khi thiếu cấu hình OAuth (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` rỗng), ứng dụng vẫn khởi động bình thường, cờ `googleAuthEnabled=False` và nút bấm phản hồi an toàn.
+   - Xác minh `create_app()` nhiều lần hoàn toàn cô lập cấu hình OAuth, không dùng nhầm client của app khác.
+
+2. **Bộ kiểm thử chính server (`tests/test_server.py`)**: **36/36 PASS (100% OK)**
    - Lệnh chạy: `.\.venv\Scripts\python.exe tests/test_server.py`
    - Xác minh toàn bộ hành vi cốt lõi: đăng ký tài khoản, đăng nhập khách/admin song song, kiểm tra CSRF riêng, bảo vệ quyền admin, upload ảnh kiểm tra MIME Pillow, kiểm tra ranh giới tiền và voucher, kiểm tra tồn kho nguyên tử (`FOR UPDATE`), hoàn kho khi hủy đơn, chuyển trạng thái đơn hàng, idempotency requestKey trả HTTP 200, giờ mở cửa theo múi giờ `Asia/Ho_Chi_Minh` và phân vùng giao hàng.
 
-2. **Bộ kiểm thử toàn vẹn kiến trúc & sửa lỗi (`tests/test_refactor_integrity.py`)**: **8/8 PASS (100% OK, ~2.5s)**
+3. **Bộ kiểm thử toàn vẹn kiến trúc & sửa lỗi (`tests/test_refactor_integrity.py`)**: **8/8 PASS (100% OK)**
    - Lệnh chạy: `.\.venv\Scripts\python.exe tests/test_refactor_integrity.py`
    - Tự tạo fixture người dùng riêng, cô lập hoàn toàn trên database `phuc_foodie_test`, dispose engine và dọn thư mục tạm sau khi chạy.
-   - Xác minh sửa lỗi mapping dọn ảnh: truy vấn `COUNT(*) AS cnt` đọc qua `res['cnt']` không lỗi.
-   - Xác minh dọn dẹp ảnh mồ côi khi đổi ảnh và giữ nguyên ảnh dùng chung khi vẫn có món khác tham chiếu.
-   - Xác minh header CSP cho phép `blob:` trong `img-src` để xem trước ảnh tải lên từ máy tính, không nới lỏng `script-src`.
-   - Xác minh phân lập upload giữa hai app instance: App A không ghi vào hay đọc từ thư mục upload của App B.
-   - Xác minh truyền `SECRET_KEY` trực tiếp không tạo file `session.key` trên đĩa.
-   - Xác minh dual session khách/admin trong cùng cookie jar.
-   - Xác minh cơ chế bảo vệ file tĩnh: chặn triệt để việc lộ file mã nguồn (`server.py`, `.env.mysql`, `.env`, `data/session.key`).
-   - Xác minh endpoint `/api/store-info` trả đầy đủ cấu hình công khai và phân vùng giao hàng.
+   - Xác minh sửa lỗi mapping dọn ảnh, dọn dẹp ảnh mồ côi, CSP `blob:` trong `img-src`, phân lập upload giữa các app instance, bảo vệ file tĩnh không lộ `.env.mysql`, `.env`, `server.py`.
 
-3. **Bộ kiểm thử giao diện & tương tác người dùng (`tests/test_ui.cjs`)**: **41/41 PASS (100% OK)**
-   - Lệnh chạy: `npm run test:ui` (hoặc `node tests/test_ui.cjs`)
-   - Xác minh 100% các kịch bản DOM/UI khách hàng và quản trị viên, tìm kiếm, lọc danh mục, mở/đóng modal chi tiết, giỏ hàng, đặt hàng, dirty check cảnh báo thay đổi cấu hình chưa lưu.
+4. **Bộ kiểm thử giao diện & Tự cập nhật đơn hàng không cần F5 (`tests/test_ui.cjs`)**: **53/53 PASS (100% OK)**
+   - Lệnh chạy: `npm test` (hoặc `node tests/test_ui.cjs`)
+   - **Tự động cập nhật khách hàng (Customer Real-time Polling 8s)**:
+     - Xác minh tự cập nhật trạng thái mới khi admin đổi trạng thái đơn (pending → preparing → delivering).
+     - Xác minh thông báo toast nhẹ hiển thị đúng mã đơn và trạng thái mới.
+     - Xác minh không phát thông báo lặp lại khi dữ liệu hoặc trạng thái không đổi.
+     - Xác minh quản lý vòng đời: tab ẩn (`document.hidden = true`) dừng polling timer; tab hiển thị trở lại kích hoạt cập nhật tức thì.
+     - Xác minh xử lý lỗi mạng: giữ nguyên thẻ đơn hàng đang hiển thị, hiển thị thanh trạng thái kết nối `customer-order-conn-status`, exponential backoff tăng dần lên tới 60s và tự phục hồi về 8s khi có mạng.
+     - Xác minh đăng xuất dừng triệt để timer polling và xóa sạch trạng thái phiên.
+   - **Tự động cập nhật quản trị viên (Admin Real-time Polling 8s)**:
+     - Xác minh phát hiện đơn mới theo ID (`seenOrderIds` Set) khi khách đặt đơn.
+     - Xác minh hiển thị cảnh báo trực quan thanh công cụ (`#new-orders-alert` "Có 1 đơn mới") và huy hiệu số lượng trên tab (`#orders-new-badge`).
+     - Xác minh nút "✕ Đã xem" đặt lại số lượng đơn mới và ẩn cảnh báo.
+     - Xác minh giữ nguyên bộ lọc trạng thái (`#status-filter`) khi dữ liệu tự động cập nhật, không bị reset về "Tất cả".
+     - Xác minh chuyển đổi tab: chuyển khỏi tab Đơn hàng (`products`, `preview`, `settings`) lập tức dừng polling; quay lại tab Đơn hàng tự động tiếp tục ngay.
+     - Xác minh lỗi mạng admin: không xóa bảng danh sách đơn hiện tại và hiển thị thông báo kết nối gọn gàng.
+   - **Các tính năng UI trước đó**: 42 kiểm thử giao diện cốt lõi (catalog, search, category filter, modal detail, cart hydration, checkout zones, demo payment, Google login button, store preview, store settings dirty check) tiếp tục PASS 100%.
 
 ---
 

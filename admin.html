@@ -41,23 +41,33 @@
         <article><span>Tiền COD đã thu</span><strong id="revenue">0đ</strong></article>
       </div>
       <div class="tabs" role="tablist" aria-label="Khu vực quản trị"><button id="orders-tab" role="tab"
-          aria-selected="true" class="active" aria-controls="orders-panel">Đơn hàng</button><button id="products-tab"
+          aria-selected="true" class="active" aria-controls="orders-panel">Đơn hàng <span id="orders-new-badge" class="badge-count" hidden></span></button><button id="products-tab"
           role="tab" aria-selected="false" aria-controls="products-panel">Quản lý món</button><button id="preview-tab"
           role="tab" aria-selected="false" aria-controls="preview-panel">Xem cửa hàng</button><button id="settings-tab"
           role="tab" aria-selected="false" aria-controls="settings-panel">Cấu hình cửa hàng</button></div>
       <section id="orders-panel" role="tabpanel" aria-labelledby="orders-tab">
         <div class="toolbar">
-          <h2>Đơn hàng</h2><label>Lọc trạng thái<select id="status-filter">
-              <option value="all">Tất cả</option>
-              <option value="pending">Chờ xác nhận</option>
-              <option value="confirmed">Đã xác nhận</option>
-              <option value="preparing">Đang chuẩn bị</option>
-              <option value="delivering">Đang giao</option>
-              <option value="delivered">Đã giao</option>
-              <option value="cancelled">Đã hủy</option>
-            </select></label>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <h2>Đơn hàng</h2>
+            <div id="new-orders-alert" class="new-orders-alert" hidden>
+              <span class="pulse-dot"></span> Có <strong id="new-orders-count">0</strong> đơn mới
+              <button type="button" id="btn-dismiss-new-orders" class="btn-dismiss" title="Ẩn thông báo">✕ Đã xem</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span id="admin-order-conn-status" class="order-conn-status" hidden>⚠️ Mất kết nối, đang thử lại...</span>
+            <label>Lọc trạng thái<select id="status-filter">
+                <option value="all">Tất cả</option>
+                <option value="pending">Chờ xác nhận</option>
+                <option value="confirmed">Đã xác nhận</option>
+                <option value="preparing">Đang chuẩn bị</option>
+                <option value="delivering">Đang giao</option>
+                <option value="delivered">Đã giao</option>
+                <option value="cancelled">Đã hủy</option>
+              </select></label>
+          </div>
         </div>
-        <p class="hint">Tự cập nhật mỗi 20 giây · Hiển thị tối đa 1.000 đơn gần nhất; thống kê tính trên danh sách này.
+        <p class="hint">Tự cập nhật mỗi 8 giây · Hiển thị tối đa 1.000 đơn gần nhất; thống kê tính trên danh sách này.
         </p>
         <div id="order-list"></div>
       </section>

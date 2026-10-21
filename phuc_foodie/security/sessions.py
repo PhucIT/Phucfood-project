@@ -123,7 +123,7 @@ def public_user(u) -> dict:
         "id": u["id"],
         "fullName": u["full_name"],
         "email": u["email"],
-        "phone": u["phone"],
+        "phone": u["phone"] or "",
         "role": u["role"]
     }
 

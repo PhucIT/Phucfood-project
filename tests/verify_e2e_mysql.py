@@ -29,13 +29,13 @@ def verify_mysql_backend():
         res = conn.execute(text("SELECT DATABASE(), CURRENT_USER(), VERSION()")).fetchone()
         print(f"[OK] Kết nối MySQL thành công: DB={res[0]}, User={res[1]}, Version={res[2]}")
 
-        # Kiểm tra sự tồn tại của đầy đủ 8 bảng
+        # Kiểm tra sự tồn tại của đầy đủ 9 bảng
         tables = [r[0] for r in conn.execute(text("SHOW TABLES")).fetchall()]
-        expected_tables = {"users", "products", "orders", "sessions", "reset_tokens", "rate_limits", "store_settings", "delivery_zones"}
+        expected_tables = {"users", "products", "orders", "sessions", "reset_tokens", "rate_limits", "store_settings", "delivery_zones", "user_identities"}
         missing = expected_tables - set(tables)
         if missing:
             raise RuntimeError(f"Thiếu bảng trong MySQL: {missing}")
-        print(f"[OK] Đầy đủ 8 bảng: {', '.join(sorted(tables))}")
+        print(f"[OK] Đầy đủ 9 bảng: {', '.join(sorted(tables))}")
 
         # Kiểm tra số lượng bản ghi hiện có
         users_cnt = conn.execute(text("SELECT count(*) FROM users")).scalar()

@@ -2,6 +2,7 @@
 import os
 import secrets
 from pathlib import Path
+from dotenv import dotenv_values
 
 # Thư mục gốc dự án (C:\WebDoAn)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -17,6 +18,20 @@ DATA_DIR = DEFAULT_DATA_DIR
 UPLOAD_DIR = DEFAULT_UPLOAD_DIR
 IMAGES_DIR = DEFAULT_IMAGES_DIR
 SESSION_KEY_PATH = DEFAULT_DATA_DIR / "session.key"
+
+
+def load_env_defaults() -> dict:
+    """Đọc cấu hình mặc định từ .env.mysql và .env mà không ghi đè cấu hình hoặc os.environ."""
+    env_dict = {}
+    env_mysql_path = PROJECT_ROOT / ".env.mysql"
+    if env_mysql_path.is_file():
+        env_dict.update({k: v for k, v in dotenv_values(env_mysql_path).items() if v is not None})
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.is_file():
+        for k, v in dotenv_values(env_path).items():
+            if v is not None and k not in env_dict:
+                env_dict[k] = v
+    return env_dict
 
 
 def resolve_app_dirs(overrides=None):
@@ -77,6 +92,7 @@ def get_secret_key(data_dir: Path, explicit_secret: str = None) -> str:
 def get_app_config(overrides=None) -> dict:
     """Trả về từ điển cấu hình ứng dụng Flask cho từng instance app."""
     overrides = overrides or {}
+    env_defaults = load_env_defaults()
     data_dir, upload_dir = resolve_app_dirs(overrides)
 
     explicit_secret = overrides.get("SECRET_KEY")
@@ -87,6 +103,23 @@ def get_app_config(overrides=None) -> dict:
     if not explicit_secret and not os.environ.get("SECRET_KEY"):
         data_dir.mkdir(parents=True, exist_ok=True)
 
+    # Nạp cấu hình Google OAuth theo thứ tự ưu tiên: overrides -> os.environ -> .env.mysql
+    google_client_id = (
+        overrides.get("GOOGLE_CLIENT_ID")
+        or os.environ.get("GOOGLE_CLIENT_ID")
+        or env_defaults.get("GOOGLE_CLIENT_ID")
+    )
+    google_client_secret = (
+        overrides.get("GOOGLE_CLIENT_SECRET")
+        or os.environ.get("GOOGLE_CLIENT_SECRET")
+        or env_defaults.get("GOOGLE_CLIENT_SECRET")
+    )
+    google_redirect_uri = (
+        overrides.get("GOOGLE_REDIRECT_URI")
+        or os.environ.get("GOOGLE_REDIRECT_URI")
+        or env_defaults.get("GOOGLE_REDIRECT_URI")
+    )
+
     config = {
         "SECRET_KEY": secret_key,
         "DATA_DIR": data_dir,
@@ -95,9 +128,13 @@ def get_app_config(overrides=None) -> dict:
         "UPLOAD_FOLDER": str(upload_dir),
         "PHUC_UPLOAD_DIR": str(upload_dir),
         "MAX_CONTENT_LENGTH": 6 * 1024 * 1024,
+        "SESSION_COOKIE_NAME": "foodie_oauth_session",
         "SESSION_COOKIE_HTTPONLY": True,
         "SESSION_COOKIE_SAMESITE": "Lax",
         "SESSION_COOKIE_SECURE": os.environ.get("COOKIE_SECURE") == "1",
+        "GOOGLE_CLIENT_ID": google_client_id,
+        "GOOGLE_CLIENT_SECRET": google_client_secret,
+        "GOOGLE_REDIRECT_URI": google_redirect_uri,
     }
     config.update(overrides)
     # Đảm bảo DATA_DIR và UPLOAD_DIR trong app.config luôn là Path object

@@ -257,5 +257,100 @@ WebDoAn/
 | `admin.html`, `admin.js`, `admin.css` | Trang quản trị: đơn hàng, món ăn, xem cửa hàng, cấu hình quán |
 | `api.js` | Tầng gọi API từ frontend tới backend |
 | `catalog.json` | Dữ liệu 8 món ăn gốc |
-| `tests/` | Bộ kiểm thử tự động backend (`test_server.py`, `test_refactor_integrity.py`) và UI (`test_ui.cjs`) |
+| `tests/` | Bộ kiểm thử tự động backend (`test_server.py`, `test_refactor_integrity.py`, `test_google_oauth.py`) và UI (`test_ui.cjs`) |
+
+---
+
+## 9. Hướng dẫn cấu hình & Trải nghiệm Đăng nhập Google (OAuth 2.0 / OIDC)
+
+### 9.1. Cơ chế và kiến trúc
+- **Thư viện chuẩn**: Sử dụng **Authlib** kết hợp Flask OpenID Connect.
+- **Quy trình chuẩn**: Authorization Code flow với scope `openid email profile`. Xác minh state, nonce và chữ ký ID Token bằng JWKS của Google.
+- **Định danh khách hàng**: Dùng trường `sub` từ Google OIDC làm định danh nhà cung cấp (provider_id), không dùng email làm định danh cứng.
+- **Bảo toàn dữ liệu & An toàn**:
+  - Bảng riêng `user_identities` với ràng buộc `UNIQUE(provider, provider_id)`.
+  - Không tạo mật khẩu mặc định cho tài khoản Google (`password_hash IS NULL`).
+  - Không tự ý liên kết tài khoản mật khẩu hiện có nếu chưa xác thực phương thức cũ.
+  - Chặn tuyệt đối xung đột tài khoản Google với tài khoản quản trị viên. Google OAuth chỉ cấp phiên cho khách hàng (`foodie_customer_session`), không bao giờ cấp quyền admin.
+
+### 9.2. Cấu hình các biến môi trường trong `.env.mysql`
+```ini
+# Cấu hình Google OAuth 2.0 (Loại Web Application)
+GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=http://127.0.0.1:5000/api/auth/google/callback
+```
+*Lưu ý: URI `http://127.0.0.1:5000/api/auth/google/callback` và `http://localhost:5000/api/auth/google/callback` phải được đăng ký trong mục Authorized redirect URIs trên Google Cloud Console.*
+
+### 9.3. Chạy migration cơ sở dữ liệu
+```powershell
+# Chạy migration bổ sung bảng user_identities và cột users nullable
+.\.venv\Scripts\python.exe migrate_google_oauth_schema.py
+```
+
+### 9.4. Trải nghiệm trên trình duyệt
+1. Khởi động máy chủ:
+   ```powershell
+   .\.venv\Scripts\python.exe server.py
+   ```
+2. Mở trình duyệt truy cập: `http://127.0.0.1:5000`.
+3. Bấm vào biểu tượng **👤 Đăng nhập** ở góc trên bên phải.
+4. Tại form Đăng nhập, bấm nút **Tiếp tục với Google**.
+5. Trình duyệt điều hướng tới trang đăng nhập của Google:
+   - Chọn tài khoản Google của bạn.
+   - Google chuyển hướng về `http://127.0.0.1:5000/api/auth/google/callback`.
+6. Đăng nhập thành công: hệ thống tạo phiên khách hàng `foodie_customer_session` và hiển thị tên người dùng trên thanh tiêu đề.
+
+---
+
+## 10. Tính năng Tự Cập Nhật Đơn Hàng Khách & Admin Không Cần F5 (Real-time Polling)
+
+### 10.1. Cơ chế hoạt động & Kiến trúc
+- **Chu kỳ cập nhật**: Polling định kỳ mỗi **8 giây** bằng hàm đệ quy `setTimeout` sau khi request trước đã hoàn tất (không chồng chéo request, không dùng `setInterval` gây tràn timer).
+- **Bảo toàn giao diện (State Preservation)**:
+  - Không tải lại trang (`location.reload()`).
+  - Giữ nguyên giỏ hàng, form nhập liệu, trạng thái modal/dialogs, vị trí cuộn trang (scroll position) và lựa chọn bộ lọc.
+- **Phía Khách hàng (`api.js`)**:
+  - Khi khách đăng nhập và mở khu vực lịch sử đơn: tự động tải ngay và kích hoạt polling 8 giây.
+  - Khi quản trị viên chuyển trạng thái đơn (ví dụ từ *Chờ xác nhận* sang *Đang chuẩn bị* hoặc *Đang giao*): giao diện khách tự cập nhật nhãn trạng thái và hiển thị thông báo toast nhẹ (không bật toast hàng loạt ở lần tải đầu).
+  - Khi khách đặt đơn mới hoặc hủy đơn thành công: cập nhật tức thì dữ liệu và thiết lập lại chu kỳ 8 giây.
+  - Tự động dừng polling khi tab bị ẩn (`document.hidden`), đóng khu vực đơn hoặc đăng xuất; tự động tải ngay và khôi phục polling khi quay lại tab.
+  - Xử lý lỗi mạng: giữ nguyên dữ liệu đơn đang hiển thị, hiển thị thanh trạng thái kết nối nhẹ nhàng (không spam toast), tự động thử lại với khoảng chờ lũy tiến (exponential backoff: 8s → 16s → 32s → 60s max) và phục hồi về 8s khi kết nối lại thành công.
+- **Phía Quản trị viên (`admin.js`)**:
+  - Khi mở tab Đơn hàng (`currentTab === 'orders'`): tự động tải ngay và duy trì polling 8 giây.
+  - **Phát hiện đơn mới chính xác**: Lưu trữ danh sách mã đơn đã xem (`seenOrderIds` Set) trong suốt phiên làm việc. Khi có đơn mới đặt từ khách, admin tự động nhận diện và hiển thị:
+    - Huy hiệu số lượng trên tab Đơn hàng: `<span class="badge-count">N</span>`.
+    - Cảnh báo trực quan trong thanh công cụ: `Có N đơn mới` kèm chấm xanh nhấp nháy (pulse dot) và nút `✕ Đã xem`.
+    - Không tự động phát âm thanh gây khó chịu. Lần tải đầu chỉ thiết lập mốc dữ liệu ban đầu, không báo toàn bộ đơn cũ là mới. Không báo trùng cùng một đơn.
+  - **Render DOM tối thiểu**: So sánh chữ ký dữ liệu đơn hàng và bộ lọc trạng thái trước khi cập nhật DOM. Giữ nguyên focus, bộ lọc `#status-filter` và vị trí cuộn trang.
+  - Khi chuyển sang các tab khác (*Quản lý món*, *Xem cửa hàng*, *Cấu hình cửa hàng*): lập tức tạm dừng polling đơn hàng. Khi quay lại tab Đơn hàng: lập tức tải ngay và tiếp tục polling.
+  - Tự động dừng polling khi tab bị ẩn hoặc đăng xuất; khôi phục ngay khi tab hiển thị lại.
+- **Tầng truyền dẫn & lỗi**: Sử dụng tuần tự sequence counter (`customerPollSeq`, `adminOrdersPollSeq`) để hủy bỏ và loại trừ triệt để phản hồi cũ (stale response) khi có hành động đổi bộ lọc, chuyển màn hình hoặc đăng xuất.
+
+### 10.2. Hướng dẫn trải nghiệm thực tế đồng bộ 2 Tab Khách & Admin
+1. Khởi động server (nếu chưa chạy):
+   ```powershell
+   .\.venv\Scripts\python.exe server.py
+   ```
+2. Mở trình duyệt với **2 cửa sổ song song**:
+   - **Tab 1 (Khách hàng)**: `http://127.0.0.1:5000`
+     - Đăng nhập tài khoản khách (mật khẩu hoặc Google).
+     - Cuộn xuống mục **Lịch sử đơn hàng**.
+   - **Tab 2 (Quản trị viên)**: `http://127.0.0.1:5000/admin`
+     - Đăng nhập bằng tài khoản admin.
+     - Mở tab **Đơn hàng**.
+3. **Thử nghiệm Đặt đơn mới**:
+   - Tại Tab 1 (Khách): Chọn món, vào giỏ hàng, chọn khu vực giao, thanh toán COD và bấm **Xác nhận đặt hàng**.
+   - Tại Tab 2 (Admin): Trong vòng tối đa 8 giây, không cần F5, admin sẽ thấy:
+     - Xuất hiện thông báo: **Có 1 đơn mới**.
+     - Huy hiệu đỏ hiển thị số `1` trên tab Đơn hàng.
+     - Đơn hàng mới xuất hiện ngay đầu danh sách và các số liệu thống kê (Chờ xác nhận, Đang thực hiện) tự tăng.
+4. **Thử nghiệm Đổi trạng thái đơn**:
+   - Tại Tab 2 (Admin): Bấm nút **Xác nhận đơn** hoặc **Bắt đầu chuẩn bị**.
+   - Tại Tab 1 (Khách): Trong vòng tối đa 8 giây, không cần F5, khách sẽ thấy:
+     - Xuất hiện thông báo toast nhẹ ở góc màn hình: `Đơn hàng #PF-...: Trạng thái mới: Đang chuẩn bị`.
+     - Huy hiệu trạng thái trên thẻ đơn hàng tự chuyển sang trạng thái mới.
+5. **Thử nghiệm Hủy đơn**:
+   - Khách bấm **Hủy đơn** tại Tab 1 -> Tab 2 (Admin) tự cập nhật sang trạng thái *Đã hủy* và hoàn lại tồn kho trong vòng 8 giây.
+
 
